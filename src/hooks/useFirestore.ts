@@ -20,7 +20,8 @@ import {
     type DocumentData,
     Timestamp,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
 
 // ──────────────────────────────────────
 // Generic real-time collection hook
@@ -148,54 +149,154 @@ export function useFeed(enabled: boolean = true) {
 // ──────────────────────────────────────
 // Events
 // ──────────────────────────────────────
+/** Stored on one document: event repeats weekly, `count` = number of occurrences (including the first). */
+export type EventRecurrence = { interval: "weekly"; count: number };
+
+function rawDateToYyyyMmDd(raw: unknown): string {
+    if (!raw) return "";
+    if (raw instanceof Timestamp) {
+        const d = raw.toDate();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+    if (typeof raw === "string") {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw.trim())) return raw.trim();
+        const d = new Date(raw);
+        if (!isNaN(d.getTime())) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        }
+    }
+    return "";
+}
+
+function parseAttendanceByDate(raw: unknown): Record<string, string[]> {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (Array.isArray(v)) out[k] = v.filter((x): x is string => typeof x === "string");
+    }
+    return out;
+}
+
+/** Non-alumni present for this occurrence date (`YYYY-MM-DD`). */
+export function getAttendanceIdsForOccurrence(event: EventItem, occurrenceYmd: string): string[] {
+    const v = event.attendanceByDate?.[occurrenceYmd];
+    if (v !== undefined) return v;
+    return [];
+}
+
+/** Count distinct occurrence sessions a member was marked present (admin). */
+export function countMemberAttendanceOccurrences(events: EventItem[], memberId: string): number {
+    let n = 0;
+    for (const e of events) {
+        const map = e.attendanceByDate || {};
+        const keys = Object.keys(map);
+        if (keys.length > 0) {
+            for (const k of keys) {
+                if (map[k]?.includes(memberId)) n++;
+            }
+        } else if ((e.attendance ?? []).includes(memberId)) {
+            n++;
+        }
+    }
+    return n;
+}
+
 export interface EventItem {
     id: string;
     title: string;
     description: string;
     date: string;
+    /** Display string (e.g. "14:00 – 15:00"); derived from startTime/endTime when reading. */
     time: string;
+    /** Stored start time "HH:mm" from input. */
+    startTime: string;
+    /** Stored end time "HH:mm" from input. */
+    endTime: string;
     location: string;
     type: string;
     status: string;
     attendees: string[];
-    /** Admin-recorded attendance (non-alumni present). */
+    /** Legacy flat list; prefer attendanceByDate. */
     attendance: string[];
+    /** Per-occurrence attendance (keys = `YYYY-MM-DD`). */
+    attendanceByDate: Record<string, string[]>;
     maxAttendees: number | null;
     tags: string[];
     featured: boolean;
     createdBy: string;
     createdAt: string;
+    /** When set, UI expands to one row per weekly occurrence (single Firestore doc). */
+    recurrence: EventRecurrence | null;
 }
 
 export function useEvents(enabled: boolean = true) {
     const result = useCollection<EventItem>(
         "events",
         [orderBy("createdAt", "desc")],
-        (raw, id) => ({
-            id,
-            title: raw.title || "",
-            description: raw.description || "",
-            date: formatTimestamp(raw.date) || formatTimestamp(raw.createdAt),
-            time: raw.time || "",
-            location: raw.location || "",
+        (raw, id) => {
+            const start = (raw.startTime && String(raw.startTime).trim()) || "";
+            const end = (raw.endTime && String(raw.endTime).trim()) || "";
+            const timeDisplay = start && end ? `${start} – ${end}` : start || raw.time || "";
+            return {
+                id,
+                title: raw.title || "",
+                description: raw.description || "",
+                date: formatTimestamp(raw.date) || formatTimestamp(raw.createdAt),
+                time: timeDisplay,
+                startTime: start,
+                endTime: end,
+                location: raw.location || "",
             type: raw.type || "meeting",
             status: raw.status || "upcoming",
             attendees: raw.attendees || [],
             attendance: raw.attendance || [],
+            attendanceByDate: (() => {
+                let by = parseAttendanceByDate(raw.attendanceByDate);
+                const legacy: string[] = Array.isArray(raw.attendance) ? raw.attendance : [];
+                if (Object.keys(by).length === 0 && legacy.length > 0) {
+                    const anchor = rawDateToYyyyMmDd(raw.date);
+                    if (anchor) by = { [anchor]: legacy };
+                }
+                return by;
+            })(),
             maxAttendees: raw.maxAttendees || null,
             tags: raw.tags || [],
             featured: raw.featured || false,
             createdBy: raw.createdBy || "",
             createdAt: formatTimestamp(raw.createdAt),
-        }),
+            recurrence:
+                raw.recurrence?.interval === "weekly" && typeof raw.recurrence?.count === "number"
+                    ? { interval: "weekly", count: Math.max(1, Number(raw.recurrence.count)) }
+                    : null,
+            };
+        },
         enabled
     );
 
-    const createEvent = async (event: Omit<EventItem, "id" | "createdAt" | "attendees" | "attendance">) => {
+    const createEvent = async (event: Omit<EventItem, "id" | "createdAt" | "attendees" | "attendance" | "attendanceByDate"> & { startTime?: string; endTime?: string }) => {
+        const startTime = (event as { startTime?: string }).startTime ?? "";
+        const endTime = (event as { endTime?: string }).endTime ?? "";
+        const rec = event.recurrence;
+        const recurrencePayload =
+            rec?.interval === "weekly" && rec.count >= 2 ? { interval: "weekly" as const, count: rec.count } : null;
         await addDoc(collection(db, "events"), {
-            ...event,
+            title: event.title,
+            description: event.description ?? "",
+            date: event.date,
+            time: event.time ?? "",
+            startTime: startTime || null,
+            endTime: endTime || null,
+            location: event.location ?? "",
+            type: event.type,
+            status: event.status,
+            maxAttendees: event.maxAttendees,
+            tags: event.tags ?? [],
+            featured: event.featured ?? false,
+            createdBy: event.createdBy ?? "",
             attendees: [],
             attendance: [],
+            attendanceByDate: {},
+            recurrence: recurrencePayload,
             createdAt: serverTimestamp(),
         });
     };
@@ -212,14 +313,52 @@ export function useEvents(enabled: boolean = true) {
         });
     };
 
-    /** Set admin-recorded attendance (non-alumni). */
-    const setEventAttendance = async (eventId: string, attendanceIds: string[]) => {
+    /** Set admin-recorded attendance (non-alumni) for one occurrence date. */
+    const setEventOccurrenceAttendance = async (eventId: string, occurrenceYmd: string, attendanceIds: string[]) => {
+        const key = `attendanceByDate.${occurrenceYmd}`;
         await updateDoc(doc(db, "events", eventId), {
-            attendance: attendanceIds,
+            [key]: attendanceIds,
         });
     };
 
-    return { ...result, createEvent, rsvp, cancelRsvp, setEventAttendance };
+    /** Update event fields (for admin/events role). */
+    const updateEvent = async (
+        eventId: string,
+        updates: Partial<Pick<EventItem, "title" | "description" | "date" | "time" | "location" | "type" | "status" | "maxAttendees" | "tags" | "featured" | "recurrence">> & {
+            startTime?: string;
+            endTime?: string;
+        }
+    ) => {
+        const payload: Record<string, unknown> = {};
+        if (updates.title !== undefined) payload.title = updates.title;
+        if (updates.description !== undefined) payload.description = updates.description;
+        if (updates.date !== undefined) payload.date = updates.date;
+        if (updates.time !== undefined) payload.time = updates.time;
+        const start = (updates as { startTime?: string }).startTime;
+        const end = (updates as { endTime?: string }).endTime;
+        if (start !== undefined) payload.startTime = start || null;
+        if (end !== undefined) payload.endTime = end || null;
+        if (updates.location !== undefined) payload.location = updates.location;
+        if (updates.type !== undefined) payload.type = updates.type;
+        if (updates.status !== undefined) payload.status = updates.status;
+        if (updates.maxAttendees !== undefined) payload.maxAttendees = updates.maxAttendees;
+        if (updates.tags !== undefined) payload.tags = updates.tags;
+        if (updates.featured !== undefined) payload.featured = updates.featured;
+        if (updates.recurrence !== undefined) {
+            payload.recurrence =
+                updates.recurrence && updates.recurrence.interval === "weekly" && updates.recurrence.count >= 2
+                    ? { interval: "weekly", count: updates.recurrence.count }
+                    : null;
+        }
+        await updateDoc(doc(db, "events", eventId), payload);
+    };
+
+    /** Delete event (admin/events role). */
+    const deleteEvent = async (eventId: string) => {
+        await deleteDoc(doc(db, "events", eventId));
+    };
+
+    return { ...result, createEvent, updateEvent, deleteEvent, rsvp, cancelRsvp, setEventOccurrenceAttendance };
 }
 
 // ──────────────────────────────────────
@@ -604,37 +743,52 @@ export function useDashboardStats() {
     useEffect(() => {
         let cancelled = false;
 
-        async function fetchCounts() {
+        async function fetchCounts(signedIn: boolean) {
             try {
-                const [projectsSnap, usersSnap, resourcesSnap] = await Promise.all([
-                    getDocs(collection(db, "projects")),
-                    getDocs(collection(db, "users")),
-                    getDocs(collection(db, "resources")),
-                ]);
+                let projectsSnap = await getDocs(collection(db, "projects"));
+                let usersSnapSize = 0;
+                let resourcesApproved = 0;
+
+                if (signedIn) {
+                    const [usersSnap, resourcesSnap] = await Promise.all([
+                        getDocs(collection(db, "users")),
+                        getDocs(collection(db, "resources")),
+                    ]);
+                    usersSnapSize = usersSnap.size;
+                    resourcesApproved = resourcesSnap.docs.filter(
+                        (d) => d.data().approved === true
+                    ).length;
+                }
 
                 if (!cancelled) {
                     const activeCount = projectsSnap.docs.filter(
                         (d) => d.data().status !== "complete"
                     ).length;
-                    const approvedCount = resourcesSnap.docs.filter(
-                        (d) => d.data().approved === true
-                    ).length;
                     setStats({
                         totalProjects: projectsSnap.size,
-                        totalMembers: usersSnap.size,
-                        totalResources: approvedCount,
+                        totalMembers: usersSnapSize,
+                        totalResources: resourcesApproved,
                         activeProjects: activeCount,
                     });
                     setLoading(false);
                 }
             } catch (err) {
                 console.error("Dashboard stats error:", err);
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         }
 
-        fetchCounts();
-        return () => { cancelled = true; };
+        const unsub = onAuthStateChanged(auth, (user) => {
+            if (!cancelled) {
+                setLoading(true);
+                void fetchCounts(!!user);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+            unsub();
+        };
     }, []);
 
     return { stats, loading };

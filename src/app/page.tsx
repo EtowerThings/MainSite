@@ -36,9 +36,9 @@ export default function LandingPage() {
   ];
 
   const stats = [
-    { label: "ACTIVE_USERS", value: statsLoading ? "—" : String(dashboardStats.totalMembers), unit: "members" },
+    { label: "ACTIVE_USERS", value: statsLoading ? "—" : user ? String(dashboardStats.totalMembers) : "—", unit: "members" },
     { label: "PROJECTS_SHIPPED", value: statsLoading ? "—" : String(dashboardStats.totalProjects), unit: "deployed" },
-    { label: "RESOURCES_DB", value: statsLoading ? "—" : String(dashboardStats.totalResources), unit: "indexed" },
+    { label: "RESOURCES_DB", value: statsLoading ? "—" : user ? String(dashboardStats.totalResources) : "—", unit: "indexed" },
     { label: "ACTIVE_PROJECTS", value: statsLoading ? "—" : String(dashboardStats.activeProjects), unit: "in progress" },
   ];
 

@@ -1,8 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { useInquiries, useResources, useProjects, useMembers, useActionItems, useStartups } from "@/hooks/useFirestore";
+import {
+    useInquiries,
+    useResources,
+    useProjects,
+    useMembers,
+    useActionItems,
+    useStartups,
+    useEvents,
+    getAttendanceIdsForOccurrence,
+} from "@/hooks/useFirestore";
+import { expandAllEventOccurrences, occurrenceEventLike, type EventOccurrenceRow } from "@/lib/recurring-events";
+import { getEventStartMs, parseEventDate } from "@/lib/event-dates";
 import { isAdmin } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
@@ -25,10 +36,55 @@ import {
     X,
     CheckSquare,
     Target,
-    Rocket
+    Rocket,
+    Download,
+    List,
+    ClipboardCheck,
+    Search,
+    CalendarDays,
 } from "lucide-react";
 
-type AdminTab = "announcements" | "actionItems" | "startups" | "applications" | "inquiries" | "pitches" | "resources" | "profiles";
+function formatOccurrenceDisplay(isoYmd: string): string {
+    const d = new Date(isoYmd + "T12:00:00");
+    if (isNaN(d.getTime())) return isoYmd;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function localTodayYmd(): string {
+    const n = new Date();
+    const m = String(n.getMonth() + 1).padStart(2, "0");
+    const day = String(n.getDate()).padStart(2, "0");
+    return `${n.getFullYear()}-${m}-${day}`;
+}
+
+function calendarYmdForOccurrence(row: EventOccurrenceRow): string {
+    const raw = row.occurrenceDate?.trim() ?? "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const p = parseEventDate(raw);
+    if (p) {
+        return `${p.getFullYear()}-${String(p.getMonth() + 1).padStart(2, "0")}-${String(p.getDate()).padStart(2, "0")}`;
+    }
+    const ms = getEventStartMs(occurrenceEventLike(row));
+    if (ms == null) return "";
+    const x = new Date(ms);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+}
+
+type AttendanceTableItem =
+    | { kind: "section"; label: string; sub?: string }
+    | { kind: "row"; row: EventOccurrenceRow; isToday: boolean; isPast: boolean };
+
+type AdminTab =
+    | "announcements"
+    | "actionItems"
+    | "startups"
+    | "applications"
+    | "inquiries"
+    | "pitches"
+    | "resources"
+    | "profiles"
+    | "eventAttendance"
+    | "skillsExport";
 
 export default function AdminPage() {
     const { profile, user } = useAuth();
@@ -39,6 +95,7 @@ export default function AdminPage() {
     const { data: members, loading: membersLoading } = useMembers(userIsAdmin);
     const { data: actionItems, loading: actionItemsLoading } = useActionItems(userIsAdmin);
     const { data: startups, loading: startupsLoading } = useStartups(userIsAdmin);
+    const { data: events, loading: eventsLoading, setEventOccurrenceAttendance } = useEvents(userIsAdmin);
 
     const [activeTab, setActiveTab] = useState<AdminTab>("announcements");
     const [replyText, setReplyText] = useState("");
@@ -68,13 +125,158 @@ export default function AdminPage() {
     // Applications state
     const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
 
-    const loading = inquiriesLoading || resourcesLoading || projectsLoading || membersLoading || actionItemsLoading || startupsLoading;
+    const [attendanceRowExpandKey, setAttendanceRowExpandKey] = useState<string | null>(null);
+    const [attendanceTableSearch, setAttendanceTableSearch] = useState("");
+    const [attendanceSaving, setAttendanceSaving] = useState(false);
+
+    const loading =
+        inquiriesLoading ||
+        resourcesLoading ||
+        projectsLoading ||
+        membersLoading ||
+        actionItemsLoading ||
+        startupsLoading ||
+        eventsLoading;
 
     const pendingInquiries = inquiries.filter((i) => i.status === "pending");
     const pendingResources = resources.filter((r) => !r.approved);
     const pendingPitches = projects.filter((p) => p.status === "ideation");
     const pendingApplications = members.filter((m) => m.status === "pending");
     const approvedMembers = members.filter((m) => m.status !== "pending" && m.status !== "rejected");
+
+    // Skill → people map for batch export (each skill lists all people who have it)
+    const skillToPeople = useMemo(() => {
+        const map = new Map<string, { people: { id: string; name: string; role: string }[]; displayName: string }>();
+        for (const member of approvedMembers) {
+            const skills = [...(member.skills || [])];
+            if (member.standoutSkill && member.standoutSkill !== "—" && !skills.includes(member.standoutSkill)) {
+                skills.push(member.standoutSkill);
+            }
+            for (const skill of skills) {
+                const trimmed = skill?.trim();
+                if (!trimmed) continue;
+                const key = trimmed.toLowerCase();
+                const existing = map.get(key);
+                const person = { id: member.id, name: member.name, role: member.role };
+                if (existing) {
+                    if (!existing.people.some((p) => p.id === member.id)) existing.people.push(person);
+                } else {
+                    map.set(key, { people: [person], displayName: trimmed });
+                }
+            }
+        }
+        return map;
+    }, [approvedMembers]);
+
+    const attendanceTableItems = useMemo((): AttendanceTableItem[] => {
+        const rows = expandAllEventOccurrences(events);
+        const todayYmd = localTodayYmd();
+        const upcoming: EventOccurrenceRow[] = [];
+        const todayRows: EventOccurrenceRow[] = [];
+        const past: EventOccurrenceRow[] = [];
+
+        for (const row of rows) {
+            const ymd = calendarYmdForOccurrence(row);
+            if (!ymd) {
+                upcoming.push(row);
+                continue;
+            }
+            if (ymd > todayYmd) upcoming.push(row);
+            else if (ymd === todayYmd) todayRows.push(row);
+            else past.push(row);
+        }
+
+        const byStartAsc = (a: EventOccurrenceRow, b: EventOccurrenceRow) =>
+            (getEventStartMs(occurrenceEventLike(a)) ?? 0) - (getEventStartMs(occurrenceEventLike(b)) ?? 0);
+        const byStartDesc = (a: EventOccurrenceRow, b: EventOccurrenceRow) => byStartAsc(b, a);
+        upcoming.sort(byStartAsc);
+        todayRows.sort(byStartAsc);
+        past.sort(byStartDesc);
+
+        const items: AttendanceTableItem[] = [];
+        const todayLabel = formatOccurrenceDisplay(todayYmd);
+
+        if (upcoming.length > 0) {
+            items.push({ kind: "section", label: "Upcoming" });
+            for (const row of upcoming) {
+                items.push({ kind: "row", row, isToday: false, isPast: false });
+            }
+        }
+        if (todayRows.length > 0) {
+            items.push({ kind: "section", label: "Today", sub: todayLabel });
+            for (const row of todayRows) {
+                items.push({ kind: "row", row, isToday: true, isPast: false });
+            }
+        }
+        if (past.length > 0) {
+            items.push({ kind: "section", label: "Past" });
+            for (const row of past) {
+                items.push({ kind: "row", row, isToday: false, isPast: true });
+            }
+        }
+
+        return items;
+    }, [events]);
+
+    const nonAlumniAttendanceMembers = useMemo(
+        () => approvedMembers.filter((m) => m.role !== "alumni"),
+        [approvedMembers]
+    );
+
+    const attendanceTableFilteredMembers = useMemo(() => {
+        if (!attendanceTableSearch.trim()) return nonAlumniAttendanceMembers;
+        const q = attendanceTableSearch.toLowerCase().trim();
+        return nonAlumniAttendanceMembers.filter(
+            (m) => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
+        );
+    }, [nonAlumniAttendanceMembers, attendanceTableSearch]);
+
+    const toggleOccurrenceAttendance = async (eventId: string, occurrenceYmd: string, userId: string) => {
+        const ev = events.find((e) => e.id === eventId);
+        if (!ev || attendanceSaving) return;
+        const cur = getAttendanceIdsForOccurrence(ev, occurrenceYmd);
+        const next = cur.includes(userId) ? cur.filter((id) => id !== userId) : [...cur, userId];
+        setAttendanceSaving(true);
+        try {
+            await setEventOccurrenceAttendance(eventId, occurrenceYmd, next);
+        } finally {
+            setAttendanceSaving(false);
+        }
+    };
+
+    const skillsExportEntries = useMemo(() => {
+        return Array.from(skillToPeople.entries())
+            .map(([_, v]) => ({ skill: v.displayName, people: v.people }))
+            .sort((a, b) => a.skill.localeCompare(b.skill, undefined, { sensitivity: "base" }));
+    }, [skillToPeople]);
+
+    const downloadSkillsCsv = () => {
+        const header = "Skill,Name,Role\n";
+        const rows = skillsExportEntries.flatMap((e) =>
+            e.people.map((p) => `"${e.skill.replace(/"/g, '""')}","${p.name.replace(/"/g, '""')}","${p.role}"`)
+        );
+        const csv = header + rows.join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `skills-export-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
+    const downloadSkillsJson = () => {
+        const obj: Record<string, string[]> = {};
+        for (const e of skillsExportEntries) {
+            obj[e.skill] = e.people.map((p) => p.name);
+        }
+        const json = JSON.stringify(obj, null, 2);
+        const blob = new Blob([json], { type: "application/json;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `skills-export-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
 
     if (!userIsAdmin) {
         return (
@@ -98,6 +300,8 @@ export default function AdminPage() {
         { key: "pitches", label: "PROPOSALS", icon: <FileText className="w-4 h-4" />, count: pendingPitches.length },
         { key: "resources", label: "DATA LOGS", icon: <BookOpen className="w-4 h-4" />, count: pendingResources.length },
         { key: "profiles", label: "ROSTER", icon: <Users className="w-4 h-4" />, count: approvedMembers.length },
+        { key: "eventAttendance", label: "ATTENDANCE", icon: <ClipboardCheck className="w-4 h-4" /> },
+        { key: "skillsExport", label: "SKILLS EXPORT", icon: <List className="w-4 h-4" /> },
     ];
 
     const handleReply = async (inquiryId: string) => {
@@ -219,8 +423,8 @@ export default function AdminPage() {
 
     // ── Application Handling ──
     const handleAuthorize = async (id: string) => {
-        const assignedRole = selectedRoles[id] || "member";
-        await updateDoc(doc(db, "users", id), { role: assignedRole, status: "approved" });
+        const assignedRole = selectedRoles[id] || "resident";
+        await updateDoc(doc(db, "users", id), { role: assignedRole, status: "approved", updatedAt: serverTimestamp() });
     };
 
     const handleReject = async (id: string) => {
@@ -487,7 +691,7 @@ export default function AdminPage() {
                                         <div className="w-full sm:w-auto relative group shrink-0">
                                             <label className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest block mb-1">ASSIGN CLEARANCE</label>
                                             <select
-                                                value={selectedRoles[app.id] || "member"}
+                                                value={selectedRoles[app.id] || "resident"}
                                                 onChange={(e) => setSelectedRoles({ ...selectedRoles, [app.id]: e.target.value })}
                                                 className="w-full sm:w-48 text-[10px] font-mono font-bold uppercase tracking-widest px-3 py-2 hud-panel-sm bg-background border border-border/50 text-foreground focus:outline-none focus:border-primary/50 transition-colors cursor-pointer appearance-none"
                                             >
@@ -664,8 +868,9 @@ export default function AdminPage() {
                                         <select
                                             value={member.role}
                                             onChange={async (e) => {
+                                                const newRole = e.target.value;
                                                 try {
-                                                    await updateDoc(doc(db, "users", member.id), { role: e.target.value });
+                                                    await updateDoc(doc(db, "users", member.id), { role: newRole, updatedAt: serverTimestamp() });
                                                 } catch (err) {
                                                     console.error("Role update error:", err);
                                                 }
@@ -679,6 +884,244 @@ export default function AdminPage() {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    )}
+
+                    {/* ── Event attendance (all occurrences) ── */}
+                    {activeTab === "eventAttendance" && (
+                        <div className="space-y-4">
+                            <div className="hud-panel bg-card/60 border border-primary/40 p-6 scanlines relative">
+                                <div className="absolute top-0 right-0 w-32 h-1 bg-gradient-to-r from-transparent to-primary/50" />
+                                <h3 className="font-bold text-lg mb-2 flex items-center gap-3 uppercase tracking-tight relative z-10 text-primary border-b border-primary/20 pb-4">
+                                    <CalendarDays className="w-5 h-5" /> SESSION ATTENDANCE MATRIX
+                                </h3>
+                                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-4 relative z-10">
+                                    Upcoming first, then today (highlighted), then past sessions (newest past first). One row per calendar date; weekly series show as separate rows.
+                                </p>
+                                {attendanceTableItems.length === 0 ? (
+                                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest relative z-10 py-8 text-center">
+                                        No events in database.
+                                    </p>
+                                ) : (
+                                    <div className="overflow-x-auto custom-scroll relative z-10 -mx-2 px-2">
+                                        <table className="w-full text-left border-collapse min-w-[640px]">
+                                            <thead>
+                                                <tr className="border-b border-border/50 text-[9px] font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                                                    <th className="py-2 pr-3">Date</th>
+                                                    <th className="py-2 pr-3">Time</th>
+                                                    <th className="py-2 pr-3">Title</th>
+                                                    <th className="py-2 pr-3">Type</th>
+                                                    <th className="py-2 pr-3 text-right">Present</th>
+                                                    <th className="py-2 pr-0 w-24 text-right">Roster</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {attendanceTableItems.map((item, itemIdx) => {
+                                                    if (item.kind === "section") {
+                                                        const isTodayHeading = item.label === "Today";
+                                                        return (
+                                                            <tr
+                                                                key={`section-${item.label}-${item.sub ?? ""}-${itemIdx}`}
+                                                                className="bg-transparent"
+                                                            >
+                                                                <td
+                                                                    colSpan={6}
+                                                                    className={cn(
+                                                                        "py-3 pb-2 text-[9px] font-mono font-bold uppercase tracking-widest border-t border-border/35",
+                                                                        itemIdx === 0 ? "pt-1 border-t-0" : "",
+                                                                        isTodayHeading ? "text-primary" : "text-muted-foreground"
+                                                                    )}
+                                                                >
+                                                                    <span className="inline-flex items-center gap-2">
+                                                                        {isTodayHeading && (
+                                                                            <span
+                                                                                className="h-2 w-2 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary))] shrink-0"
+                                                                                aria-hidden
+                                                                            />
+                                                                        )}
+                                                                        {item.label}
+                                                                    </span>
+                                                                    {item.sub ? (
+                                                                        <span className="ml-2 font-normal normal-case text-muted-foreground tracking-tight">
+                                                                            — {item.sub}
+                                                                        </span>
+                                                                    ) : null}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    }
+
+                                                    const { row, isToday, isPast } = item;
+                                                    const present = getAttendanceIdsForOccurrence(row, row.occurrenceDate);
+                                                    const expanded = attendanceRowExpandKey === row.instanceKey;
+                                                    return (
+                                                        <Fragment key={row.instanceKey}>
+                                                            <tr
+                                                                className={cn(
+                                                                    "border-b border-border/30 text-[10px] font-mono uppercase tracking-tight transition-colors",
+                                                                    isToday &&
+                                                                        "bg-primary/[0.14] border-l-[3px] border-l-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.14)]",
+                                                                    isPast && !isToday && "bg-background/[0.15] text-muted-foreground",
+                                                                    !isToday &&
+                                                                        !isPast &&
+                                                                        "bg-background/30"
+                                                                )}
+                                                            >
+                                                                <td
+                                                                    className={cn(
+                                                                        "py-2.5 pr-3 whitespace-nowrap",
+                                                                        isToday ? "text-primary font-semibold" : "text-primary/90"
+                                                                    )}
+                                                                >
+                                                                    {formatOccurrenceDisplay(
+                                                                        /^\d{4}-\d{2}-\d{2}$/.test(row.occurrenceDate?.trim() ?? "")
+                                                                            ? row.occurrenceDate
+                                                                            : calendarYmdForOccurrence(row)
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 pr-3 whitespace-nowrap text-muted-foreground">
+                                                                    {row.time || "—"}
+                                                                </td>
+                                                                <td className="py-2.5 pr-3 max-w-[200px] truncate" title={row.title}>
+                                                                    {row.title}
+                                                                </td>
+                                                                <td className="py-2.5 pr-3 text-muted-foreground whitespace-nowrap">
+                                                                    {row.type.replace("_", " ")}
+                                                                </td>
+                                                                <td className="py-2.5 pr-3 text-right tabular-nums">{present.length}</td>
+                                                                <td className="py-2.5 pl-2 text-right">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setAttendanceRowExpandKey((k) =>
+                                                                                k === row.instanceKey ? null : row.instanceKey
+                                                                            )
+                                                                        }
+                                                                        className="text-[9px] font-mono font-bold uppercase tracking-widest text-primary hover:underline border border-primary/30 px-2 py-1 hud-panel-sm"
+                                                                    >
+                                                                        {expanded ? "Hide" : "Mark"}
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                            {expanded && (
+                                                                <tr
+                                                                    className={cn(
+                                                                        "border-b border-border/40",
+                                                                        isToday ? "bg-primary/10" : "bg-background/20"
+                                                                    )}
+                                                                >
+                                                                    <td colSpan={6} className="py-3 px-1">
+                                                                        <div className="relative mb-3 max-w-md">
+                                                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                                                            <input
+                                                                                type="text"
+                                                                                value={attendanceTableSearch}
+                                                                                onChange={(e) =>
+                                                                                    setAttendanceTableSearch(e.target.value)
+                                                                                }
+                                                                                placeholder="Search non-alumni..."
+                                                                                className="w-full pl-8 pr-3 py-2 hud-panel-sm bg-background/50 border border-border/50 focus:border-primary/50 text-xs font-mono focus:outline-none"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="flex flex-wrap gap-1.5">
+                                                                            {attendanceTableFilteredMembers.length === 0 ? (
+                                                                                <span className="text-[9px] font-mono text-muted-foreground uppercase">
+                                                                                    {attendanceTableSearch.trim()
+                                                                                        ? "No matches."
+                                                                                        : "No non-alumni on roster."}
+                                                                                </span>
+                                                                            ) : (
+                                                                                attendanceTableFilteredMembers.map((mem) => {
+                                                                                    const isPresent = present.includes(mem.id);
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={mem.id}
+                                                                                            type="button"
+                                                                                            disabled={attendanceSaving}
+                                                                                            onClick={() =>
+                                                                                                toggleOccurrenceAttendance(
+                                                                                                    row.id,
+                                                                                                    row.occurrenceDate,
+                                                                                                    mem.id
+                                                                                                )
+                                                                                            }
+                                                                                            className={cn(
+                                                                                                "px-2.5 py-1 hud-panel-sm text-[10px] font-mono transition-all border uppercase",
+                                                                                                isPresent
+                                                                                                    ? "bg-primary/10 text-primary border-primary"
+                                                                                                    : "bg-card/40 border-border/40 text-muted-foreground hover:bg-accent hover:border-border"
+                                                                                            )}
+                                                                                        >
+                                                                                            {mem.name}
+                                                                                        </button>
+                                                                                    );
+                                                                                })
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </Fragment>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Skills Export Tab ── */}
+                    {activeTab === "skillsExport" && (
+                        <div className="space-y-6">
+                            <div className="hud-panel bg-card/60 border border-primary/40 p-6 sm:p-8 scanlines relative">
+                                <div className="absolute top-0 right-0 w-32 h-1 bg-gradient-to-r from-transparent to-primary/50" />
+                                <h3 className="font-bold text-lg mb-4 flex items-center gap-3 uppercase tracking-tight relative z-10 text-primary border-b border-primary/20 pb-4">
+                                    <List className="w-5 h-5" /> BATCH EXPORT: SKILLS BY PERSONNEL
+                                </h3>
+                                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-6 relative z-10">
+                                    Each skill lists all roster members who have it. Export as CSV (skill, name, role) or JSON (skill → array of names).
+                                </p>
+                                <div className="flex flex-wrap gap-3 relative z-10 mb-6">
+                                    <button
+                                        onClick={downloadSkillsCsv}
+                                        disabled={skillsExportEntries.length === 0}
+                                        className="hud-panel bg-primary text-primary-foreground px-6 py-3 text-xs font-mono font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        <Download className="w-4 h-4" /> DOWNLOAD CSV
+                                    </button>
+                                    <button
+                                        onClick={downloadSkillsJson}
+                                        disabled={skillsExportEntries.length === 0}
+                                        className="hud-panel bg-card border border-primary/50 text-primary px-6 py-3 text-xs font-mono font-bold uppercase tracking-widest hover:bg-primary/10 transition-all disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        <Download className="w-4 h-4" /> DOWNLOAD JSON
+                                    </button>
+                                </div>
+                                {skillsExportEntries.length === 0 ? (
+                                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest relative z-10">No skills recorded on roster yet.</p>
+                                ) : (
+                                    <div className="space-y-4 relative z-10 max-h-[60vh] overflow-y-auto pr-2 custom-scroll">
+                                        {skillsExportEntries.map((entry) => (
+                                            <div key={entry.skill} className="hud-panel-sm bg-background/50 border border-border/40 p-4">
+                                                <div className="text-xs font-mono font-bold uppercase tracking-widest text-primary border-b border-primary/20 pb-2 mb-2 flex items-center justify-between">
+                                                    <span>{entry.skill}</span>
+                                                    <span className="text-[10px] text-muted-foreground font-normal">{entry.people.length} {entry.people.length === 1 ? "person" : "people"}</span>
+                                                </div>
+                                                <ul className="flex flex-wrap gap-2">
+                                                    {entry.people.map((p) => (
+                                                        <li key={p.id} className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest px-2 py-1 hud-panel-sm border border-border/40 bg-card/60">
+                                                            {p.name}
+                                                            <span className="text-muted-foreground/70 ml-1">({getRoleLabel(p.role)})</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

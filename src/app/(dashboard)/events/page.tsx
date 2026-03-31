@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { useEvents, useMembers } from "@/hooks/useFirestore";
+import { useEvents, useMembers, getAttendanceIdsForOccurrence, type EventRecurrence } from "@/hooks/useFirestore";
 import {
     CalendarDays,
     Clock,
@@ -17,9 +17,27 @@ import {
     Sparkles,
     Search,
     ClipboardCheck,
+    Pencil,
+    Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isAdmin } from "@/lib/roles";
+import { canEditEvents } from "@/lib/roles";
+import { EventTimeSchedule, addMinutesToHHMM } from "@/components/event-time-schedule";
+import {
+    eventSeriesHasUpcoming,
+    eventSeriesFullyPast,
+    getListDisplayOccurrence,
+    getNextOccurrenceRow,
+    sortKeyUpcomingSeries,
+    sortKeyPastSeries,
+    sortKeyAllSeries,
+} from "@/lib/recurring-events";
+
+function formatOccurrenceDisplay(isoYmd: string): string {
+    const d = new Date(isoYmd + "T12:00:00");
+    if (isNaN(d.getTime())) return isoYmd;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 const typeColors: Record<string, string> = {
     workshop: "bg-chart-1/10 border-chart-1/30 text-chart-1",
@@ -50,17 +68,83 @@ const defaultEvent = {
 
 export default function EventsPage() {
     const { profile } = useAuth();
-    const { data: events, loading, createEvent, rsvp, cancelRsvp, setEventAttendance } = useEvents();
+    const { data: events, loading, createEvent, updateEvent, deleteEvent, rsvp, cancelRsvp, setEventOccurrenceAttendance } = useEvents();
     const { data: members, loading: membersLoading } = useMembers();
-    const [filter, setFilter] = useState<"all" | "upcoming" | "past">("all");
+    const [filter, setFilter] = useState<"all" | "upcoming" | "past">("upcoming");
     const [typeFilter, setTypeFilter] = useState<string>("all");
     const [showCreate, setShowCreate] = useState(false);
     const [creating, setCreating] = useState(false);
     const [newEvent, setNewEvent] = useState(defaultEvent);
-    const [attendanceEventId, setAttendanceEventId] = useState<string | null>(null);
+    /** `${eventId}:${occurrenceYmd}` so recurring series attendance is per session. */
+    const [attendancePanelKey, setAttendancePanelKey] = useState<string | null>(null);
     const [attendanceSearch, setAttendanceSearch] = useState("");
     const [attendanceSaving, setAttendanceSaving] = useState(false);
-    const userIsAdmin = isAdmin(profile?.role);
+    const [editingEvent, setEditingEvent] = useState<typeof events[0] | null>(null);
+    const [editForm, setEditForm] = useState(defaultEvent);
+    const [editStatus, setEditStatus] = useState<string>("upcoming");
+    const [editSaving, setEditSaving] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const userCanEditEvents = canEditEvents(profile?.role);
+
+    const openEdit = (event: typeof events[0]) => {
+        // Prefer stored startTime/endTime (HH:mm); fall back to parsing event.time for legacy events
+        let startTime = (event as { startTime?: string }).startTime?.trim() || "";
+        let endTime = (event as { endTime?: string }).endTime?.trim() || "";
+        if (!startTime && event.time?.trim()) {
+            const parts = event.time.split(/\s*[–\-—]\s*|\s+to\s+/i).map((p) => p.trim()).filter(Boolean);
+            startTime = parts[0] || "";
+            endTime = parts[1] || "";
+            const to24 = (t: string) => {
+                const match = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+                if (!match) return t;
+                let h = parseInt(match[1], 10);
+                const m = match[2];
+                const ampm = (match[3] || "").toUpperCase();
+                if (ampm === "PM" && h < 12) h += 12;
+                if (ampm === "AM" && h === 12) h = 0;
+                return `${String(h).padStart(2, "0")}:${m}`;
+            };
+            if (startTime && !/^\d{2}:/.test(startTime) && /^\d{1,2}:\d{2}$/.test(startTime)) startTime = startTime.replace(/^(\d):/, "0$1:");
+            if (endTime && !/^\d{2}:/.test(endTime) && /^\d{1,2}:\d{2}$/.test(endTime)) endTime = endTime.replace(/^(\d):/, "0$1:");
+            startTime = to24(startTime);
+            endTime = endTime ? to24(endTime) : "";
+        }
+        if (startTime && !endTime) {
+            endTime = addMinutesToHHMM(startTime, 60);
+        }
+        const dateStr = /^\d{4}-\d{2}-\d{2}$/.test(event.date)
+            ? event.date
+            : event.date
+                ? (() => {
+                    const d = new Date(event.date);
+                    if (!isNaN(d.getTime())) {
+                        const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+                        return `${y}-${m}-${day}`;
+                    }
+                    return "";
+                })()
+                : "";
+        const isVirtual = event.location?.toLowerCase().startsWith("virtual:");
+        const rec = event.recurrence;
+        setEditForm({
+            title: event.title,
+            description: event.description,
+            date: dateStr,
+            startTime,
+            endTime,
+            location: isVirtual ? "" : (event.location || ""),
+            type: event.type,
+            tags: (event.tags || []).join(", "),
+            maxAttendees: event.maxAttendees != null ? String(event.maxAttendees) : "",
+            featured: event.featured,
+            virtualLink: isVirtual ? (event.location || "").replace(/^virtual:\s*/i, "") : "",
+            isVirtual: !!isVirtual,
+            isRecurring: !!(rec && rec.interval === "weekly" && rec.count > 1),
+            recurrenceWeeks: rec?.count ?? 4,
+        });
+        setEditStatus(event.status || "upcoming");
+        setEditingEvent(events.find((e) => e.id === event.id) ?? event);
+    };
 
     const nonAlumniMembers = useMemo(() => members.filter((m) => m.role !== "alumni"), [members]);
     const attendanceFilteredMembers = useMemo(() => {
@@ -69,56 +153,83 @@ export default function EventsPage() {
         return nonAlumniMembers.filter((m) => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q));
     }, [nonAlumniMembers, attendanceSearch]);
 
-    const filtered = events
-        .filter((e) => filter === "all" || e.status === filter || (filter === "upcoming" && e.status === "ongoing"))
-        .filter((e) => typeFilter === "all" || e.type === typeFilter);
+    const filtered = useMemo(() => {
+        let list = events.filter((e) => typeFilter === "all" || e.type === typeFilter);
+        if (filter === "upcoming") {
+            list = list.filter((e) => eventSeriesHasUpcoming(e));
+        } else if (filter === "past") {
+            list = list.filter((e) => eventSeriesFullyPast(e));
+        }
+        if (filter === "upcoming") {
+            return [...list].sort((a, b) => {
+                const ma = sortKeyUpcomingSeries(a);
+                const mb = sortKeyUpcomingSeries(b);
+                if (ma !== mb) return ma - mb;
+                return a.title.localeCompare(b.title);
+            });
+        }
+        if (filter === "past") {
+            return [...list].sort((a, b) => {
+                const ma = sortKeyPastSeries(a);
+                const mb = sortKeyPastSeries(b);
+                if (ma !== mb) return mb - ma;
+                return a.title.localeCompare(b.title);
+            });
+        }
+        return [...list].sort((a, b) => {
+            const ma = sortKeyAllSeries(a);
+            const mb = sortKeyAllSeries(b);
+            if (ma !== mb) return ma - mb;
+            return a.title.localeCompare(b.title);
+        });
+    }, [events, filter, typeFilter]);
 
-    const featured = events.find((e) => e.featured);
+    const featured = useMemo(() => events.find((e) => e.featured && eventSeriesHasUpcoming(e)) ?? null, [events]);
+
+    const featuredNextOccurrence = useMemo(
+        () => (featured ? getNextOccurrenceRow(featured) : null),
+        [featured]
+    );
 
     const handleCreate = async () => {
         if (!newEvent.title.trim() || !newEvent.date) return;
         setCreating(true);
         try {
-            const timeStr = newEvent.startTime
-                ? newEvent.endTime
-                    ? `${newEvent.startTime} – ${newEvent.endTime}`
-                    : newEvent.startTime
-                : "";
+            const startTime = newEvent.startTime?.trim() || "";
+            const endTime = newEvent.endTime?.trim() || "";
 
             const locationStr = newEvent.isVirtual && newEvent.virtualLink
                 ? `Virtual: ${newEvent.virtualLink}`
                 : newEvent.location;
 
             const baseDate = new Date(newEvent.date);
-            // Must fix the timezone offset issue when parsing YYYY-MM-DD
             baseDate.setMinutes(baseDate.getMinutes() + baseDate.getTimezoneOffset());
+            const year0 = baseDate.getFullYear();
+            const month0 = String(baseDate.getMonth() + 1).padStart(2, "0");
+            const day0 = String(baseDate.getDate()).padStart(2, "0");
+            const formattedDate = `${year0}-${month0}-${day0}`;
 
-            const weeksToGenerate = newEvent.isRecurring ? newEvent.recurrenceWeeks : 1;
+            const recurrence: EventRecurrence | null =
+                newEvent.isRecurring && newEvent.recurrenceWeeks >= 2
+                    ? { interval: "weekly", count: newEvent.recurrenceWeeks }
+                    : null;
 
-            for (let i = 0; i < weeksToGenerate; i++) {
-                const targetDate = new Date(baseDate);
-                targetDate.setDate(targetDate.getDate() + (i * 7));
-
-                // Format back to YYYY-MM-DD
-                const year = targetDate.getFullYear();
-                const month = String(targetDate.getMonth() + 1).padStart(2, '0');
-                const day = String(targetDate.getDate()).padStart(2, '0');
-                const formattedDate = `${year}-${month}-${day}`;
-
-                await createEvent({
-                    title: newEvent.title,
-                    description: newEvent.description,
-                    date: formattedDate,
-                    time: timeStr,
-                    location: locationStr,
-                    type: newEvent.type,
-                    status: "upcoming",
-                    maxAttendees: newEvent.maxAttendees ? parseInt(newEvent.maxAttendees) : null,
-                    tags: newEvent.tags.split(",").map((t) => t.trim()).filter(Boolean),
-                    featured: newEvent.featured,
-                    createdBy: profile?.uid || "",
-                });
-            }
+            await createEvent({
+                title: newEvent.title,
+                description: newEvent.description,
+                date: formattedDate,
+                time: startTime && endTime ? `${startTime} – ${endTime}` : startTime || "",
+                startTime,
+                endTime,
+                location: locationStr,
+                type: newEvent.type,
+                status: "upcoming",
+                maxAttendees: newEvent.maxAttendees ? parseInt(newEvent.maxAttendees) : null,
+                tags: newEvent.tags.split(",").map((t) => t.trim()).filter(Boolean),
+                featured: newEvent.featured,
+                createdBy: profile?.uid || "",
+                recurrence,
+            });
 
             setNewEvent(defaultEvent);
             setShowCreate(false);
@@ -140,15 +251,14 @@ export default function EventsPage() {
         }
     };
 
-    const toggleAttendance = async (eventId: string, userId: string) => {
+    const toggleAttendance = async (eventId: string, occurrenceYmd: string, userId: string) => {
         const event = events.find((e) => e.id === eventId);
         if (!event || attendanceSaving) return;
-        const next = event.attendance.includes(userId)
-            ? event.attendance.filter((id) => id !== userId)
-            : [...event.attendance, userId];
+        const cur = getAttendanceIdsForOccurrence(event, occurrenceYmd);
+        const next = cur.includes(userId) ? cur.filter((id) => id !== userId) : [...cur, userId];
         setAttendanceSaving(true);
         try {
-            await setEventAttendance(eventId, next);
+            await setEventOccurrenceAttendance(eventId, occurrenceYmd, next);
         } finally {
             setAttendanceSaving(false);
         }
@@ -156,6 +266,64 @@ export default function EventsPage() {
 
     const update = (field: string, value: string | boolean | number) =>
         setNewEvent((prev) => ({ ...prev, [field]: value }));
+
+    const updateEditForm = (field: string, value: string | boolean | number) =>
+        setEditForm((prev) => ({ ...prev, [field]: value }));
+
+    const handleEdit = async () => {
+        if (!editingEvent || !editForm.title.trim() || !editForm.date) return;
+        setEditSaving(true);
+        try {
+            const startTime = editForm.startTime?.trim() || "";
+            const endTime = editForm.endTime?.trim() || "";
+            const locationStr = editForm.isVirtual && editForm.virtualLink
+                ? `Virtual: ${editForm.virtualLink}`
+                : editForm.location;
+            const recurrence: EventRecurrence | null =
+                editForm.isRecurring && editForm.recurrenceWeeks >= 2
+                    ? { interval: "weekly", count: editForm.recurrenceWeeks }
+                    : null;
+
+            await updateEvent(editingEvent.id, {
+                title: editForm.title,
+                description: editForm.description,
+                date: editForm.date,
+                time: startTime && endTime ? `${startTime} – ${endTime}` : startTime || "",
+                startTime,
+                endTime,
+                location: locationStr,
+                type: editForm.type,
+                status: editStatus,
+                maxAttendees: editForm.maxAttendees ? parseInt(editForm.maxAttendees) : null,
+                tags: editForm.tags.split(",").map((t) => t.trim()).filter(Boolean),
+                featured: editForm.featured,
+                recurrence,
+            });
+            setEditingEvent(null);
+        } catch (err) {
+            console.error("Edit event error:", err);
+        } finally {
+            setEditSaving(false);
+        }
+    };
+
+    const handleDeleteEvent = async (eventId: string) => {
+        const series = events.find((e) => e.id === eventId);
+        const msg =
+            series?.recurrence && series.recurrence.count > 1
+                ? "Delete this entire recurring series? All future occurrences will be removed. This cannot be undone."
+                : "Delete this event? This cannot be undone.";
+        if (!confirm(msg)) return;
+        setDeletingId(eventId);
+        try {
+            await deleteEvent(eventId);
+            setEditingEvent(null);
+        } catch (err) {
+            console.error("Delete event error:", err);
+        } finally {
+            setDeletingId(null);
+        }
+    };
 
     return (
         <div className="flex flex-col min-h-[calc(100vh-4rem)] animate-fade-in space-y-6 relative z-10">
@@ -170,7 +338,7 @@ export default function EventsPage() {
                         OPERATIONAL <span className="gradient-text-cyber">CALENDAR</span>
                     </h1>
                 </div>
-                {userIsAdmin && (
+                {userCanEditEvents && (
                     <button
                         onClick={() => setShowCreate(true)}
                         className="hud-panel-sm bg-primary text-primary-foreground px-5 py-2.5 text-xs font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border-strong flex items-center gap-2 group"
@@ -202,7 +370,12 @@ export default function EventsPage() {
                         <div className="flex flex-wrap gap-5 mb-8 border-l-2 border-primary/30 pl-4 py-1">
                             <div className="flex flex-col gap-1">
                                 <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest flex items-center gap-1.5"><CalendarDays className="w-3 h-3 text-primary/70" /> T-MINUS D-DAY</span>
-                                <span className="text-xs font-bold font-mono tracking-wide">{featured.date}</span>
+                                <span className="text-xs font-bold font-mono tracking-wide">
+                                    {featuredNextOccurrence ? formatOccurrenceDisplay(featuredNextOccurrence.occurrenceDate) : formatOccurrenceDisplay(featured.date)}
+                                </span>
+                                {featured.recurrence && featured.recurrence.count > 1 && (
+                                    <span className="text-[9px] font-mono text-primary/90 uppercase tracking-widest">Weekly</span>
+                                )}
                             </div>
                             <div className="flex flex-col gap-1">
                                 <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest flex items-center gap-1.5"><Clock className="w-3 h-3 text-warning/70" /> CHRONO SYNC</span>
@@ -284,24 +457,43 @@ export default function EventsPage() {
                     {filtered.map((event, i) => {
                         const isAttending = profile?.uid ? event.attendees.includes(profile.uid) : false;
                         const isFull = event.maxAttendees ? event.attendees.length >= event.maxAttendees : false;
+                        const displayOcc = getListDisplayOccurrence(event, filter);
+                        const attendanceKey = `${event.id}:${displayOcc.occurrenceDate}`;
+                        const showExpired = eventSeriesFullyPast(event);
+                        const showRsvp = eventSeriesHasUpcoming(event);
                         return (
-                            <div key={event.id} className={cn("group bg-card/60 border border-border/40 p-5 transition-all hover:border-primary/50 scanlines relative flex flex-col", i % 2 === 0 ? 'hud-panel' : 'hud-corners', event.status === "past" && "opacity-60 saturate-50")}>
+                            <div key={event.id} className={cn("group bg-card/60 border border-border/40 p-5 transition-all hover:border-primary/50 scanlines relative flex flex-col", i % 2 === 0 ? 'hud-panel' : 'hud-corners', showExpired && "opacity-60 saturate-50")}>
                                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary/50 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary/50 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-                                <div className="flex items-start justify-between mb-4 relative z-10">
+                                <div className="flex items-start justify-between gap-2 mb-4 relative z-10">
                                     <span className={cn("text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border hud-panel-sm", typeColors[event.type] || typeColors.meeting)}>
                                         {event.type.replace("_", " ")}
                                     </span>
-                                    {event.status === "past" && <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">EXPIRED</span>}
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        {showExpired && <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">EXPIRED</span>}
+                                        {userCanEditEvents && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); openEdit(event); }}
+                                                className="p-1.5 hud-panel-sm border border-border/50 text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+                                                title="Edit event"
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <h3 className="font-bold text-lg mb-2 uppercase tracking-tight group-hover:text-primary transition-colors relative z-10 line-clamp-1">{event.title}</h3>
+                                {event.recurrence && event.recurrence.count > 1 && (
+                                    <p className="text-[9px] font-mono text-primary uppercase tracking-widest mb-2 relative z-10">Weekly</p>
+                                )}
                                 <p className="text-xs font-mono text-muted-foreground mb-5 line-clamp-2 leading-relaxed flex-1 relative z-10">{event.description}</p>
 
                                 <div className="space-y-2.5 mb-5 relative z-10 bg-background/50 p-3 border border-border/40">
                                     <div className="flex items-center gap-3 text-xs font-mono text-muted-foreground uppercase tracking-widest">
                                         <CalendarDays className="w-3.5 h-3.5 flex-shrink-0 text-primary/70" />
-                                        <span className="truncate">{event.date}</span>
+                                        <span className="truncate">{formatOccurrenceDisplay(displayOcc.occurrenceDate)}</span>
                                     </div>
                                     {event.time && (
                                         <div className="flex items-center gap-3 text-xs font-mono text-muted-foreground uppercase tracking-widest">
@@ -330,7 +522,7 @@ export default function EventsPage() {
                                     </div>
                                 </div>
 
-                                {event.status === "upcoming" && (
+                                {showRsvp && (
                                     <button
                                         onClick={() => handleRsvp(event.id)}
                                         disabled={isFull && !isAttending}
@@ -347,22 +539,22 @@ export default function EventsPage() {
                                     </button>
                                 )}
 
-                                {/* Admin: take non-alumni attendance */}
-                                {userIsAdmin && (
+                                {/* Admin / Events role: take non-alumni attendance */}
+                                {userCanEditEvents && (
                                     <div className="mt-4 pt-4 border-t border-border/40 relative z-10">
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                setAttendanceEventId((prev) => (prev === event.id ? null : event.id));
-                                                if (attendanceEventId !== event.id) setAttendanceSearch("");
+                                                setAttendancePanelKey((prev) => (prev === attendanceKey ? null : attendanceKey));
+                                                setAttendanceSearch("");
                                             }}
                                             className="flex items-center gap-2 text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
                                         >
                                             <ClipboardCheck className="w-3.5 h-3.5" />
-                                            ATTENDANCE ({event.attendance?.length ?? 0})
-                                            {attendanceEventId === event.id ? " ▼" : " ▶"}
+                                            ATTENDANCE ({getAttendanceIdsForOccurrence(event, displayOcc.occurrenceDate).length})
+                                            {attendancePanelKey === attendanceKey ? " ▼" : " ▶"}
                                         </button>
-                                        {attendanceEventId === event.id && (
+                                        {attendancePanelKey === attendanceKey && (
                                             <div className="mt-3 space-y-3" onClick={(e) => e.stopPropagation()}>
                                                 <div className="relative">
                                                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -387,12 +579,12 @@ export default function EventsPage() {
                                                     ) : (
                                                         <div className="flex flex-wrap gap-1.5">
                                                             {attendanceFilteredMembers.map((mem) => {
-                                                                const present = (event.attendance ?? []).includes(mem.id);
+                                                                const present = getAttendanceIdsForOccurrence(event, displayOcc.occurrenceDate).includes(mem.id);
                                                                 return (
                                                                     <button
                                                                         key={mem.id}
                                                                         type="button"
-                                                                        onClick={() => toggleAttendance(event.id, mem.id)}
+                                                                        onClick={() => toggleAttendance(event.id, displayOcc.occurrenceDate, mem.id)}
                                                                         disabled={attendanceSaving}
                                                                         className={cn(
                                                                             "px-2.5 py-1 hud-panel-sm text-[10px] font-mono transition-all border",
@@ -422,7 +614,7 @@ export default function EventsPage() {
                 <div className="flex-1 flex flex-col items-center justify-center py-16 hud-panel bg-card/40 border border-border/40 scanlines">
                     <CalendarDays className="w-16 h-16 text-muted-foreground/30 mb-4 relative z-10" />
                     <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest relative z-10">
-                        {userIsAdmin ? "NO EVENTS FOUND. CREATE ONE TO GET STARTED." : "NO EVENTS CURRENTLY SCHEDULED."}
+                        {userCanEditEvents ? "NO EVENTS FOUND. CREATE ONE TO GET STARTED." : "NO EVENTS CURRENTLY SCHEDULED."}
                     </p>
                 </div>
             )}
@@ -438,7 +630,7 @@ export default function EventsPage() {
                             <div>
                                 <div className="flex items-center gap-2 mb-1">
                                     <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                                    <span className="text-[10px] font-mono text-primary uppercase tracking-widest">E-BOARD ACCESS ONLY</span>
+                                    <span className="text-[10px] font-mono text-primary uppercase tracking-widest">ADMIN / EVENTS</span>
                                 </div>
                                 <h3 className="font-black text-xl uppercase tracking-tight flex items-center gap-2">
                                     <CalendarDays className="w-5 h-5 text-primary" /> NEW EVENT DETAILS
@@ -463,26 +655,22 @@ export default function EventsPage() {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Date */}
                                 <div className="p-4 hud-corners bg-background/40 border border-border/50">
                                     <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block flex items-center gap-1.5">
                                         <CalendarDays className="w-3.5 h-3.5" /> DEPLOYMENT DATE <span className="text-primary">*</span>
                                     </label>
                                     <input type="date" value={newEvent.date} onChange={(e) => update("date", e.target.value)} className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none uppercase" />
                                 </div>
-
-                                {/* Time Row */}
-                                <div className="p-4 hud-corners bg-background/40 border border-border/50 grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> T-START</label>
-                                        <input type="time" value={newEvent.startTime} onChange={(e) => update("startTime", e.target.value)} className="w-full px-3 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none uppercase" />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">T-END</label>
-                                        <input type="time" value={newEvent.endTime} onChange={(e) => update("endTime", e.target.value)} className="w-full px-3 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none uppercase" />
-                                    </div>
-                                </div>
                             </div>
+
+                            <EventTimeSchedule
+                                label="Schedule"
+                                startTime={newEvent.startTime}
+                                endTime={newEvent.endTime}
+                                onChange={({ startTime, endTime }) =>
+                                    setNewEvent((prev) => ({ ...prev, startTime, endTime }))
+                                }
+                            />
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {/* Event Type & Max Attendees */}
@@ -548,7 +736,7 @@ export default function EventsPage() {
                                         <CalendarDays className="w-4 h-4 text-primary" />
                                         <div>
                                             <p className="text-[10px] font-mono font-bold text-foreground uppercase tracking-widest">RECURRING EVENT</p>
-                                            <p className="text-[9px] font-mono text-muted-foreground uppercase">Duplicate weekly.</p>
+                                            <p className="text-[9px] font-mono text-muted-foreground uppercase">One record — repeats weekly.</p>
                                         </div>
                                     </div>
                                     <button
@@ -612,8 +800,150 @@ export default function EventsPage() {
                         </div>
                     </div>
                 </div>
-            )
-            }
-        </div >
+            )}
+
+            {/* ── Edit Event Modal ── */}
+            {editingEvent && (
+                <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setEditingEvent(null)}>
+                    <div className="hud-panel bg-card border border-primary/40 max-w-2xl w-full max-h-[90vh] overflow-y-auto scanlines noise relative glow-border animate-fade-in custom-scroll" onClick={(e) => e.stopPropagation()}>
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent z-20" />
+                        <div className="flex items-center justify-between p-6 pb-4 border-b border-border/50 sticky top-0 bg-card/95 backdrop-blur-md z-30">
+                            <h3 className="font-black text-xl uppercase tracking-tight flex items-center gap-2">
+                                <Pencil className="w-5 h-5 text-primary" /> EDIT EVENT
+                            </h3>
+                            <button onClick={() => setEditingEvent(null)} className="p-2 hud-panel-sm border border-border/50 hover:border-primary/50 text-muted-foreground hover:text-primary transition-colors bg-background/50"><X className="w-4 h-4" /></button>
+                        </div>
+                        <div className="p-6 space-y-5 relative z-10">
+                            <div className="p-4 hud-corners bg-background/40 border border-border/50 space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">EVENT TITLE <span className="text-primary">*</span></label>
+                                    <input type="text" value={editForm.title} onChange={(e) => updateEditForm("title", e.target.value)} placeholder="e.g. ALL HANDS MEETING" className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono uppercase transition-colors focus:outline-none" />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">DESCRIPTION</label>
+                                    <textarea rows={3} value={editForm.description} onChange={(e) => updateEditForm("description", e.target.value)} placeholder="Enter details..." className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none resize-none" />
+                                </div>
+                            </div>
+                            <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">DATE <span className="text-primary">*</span></label>
+                                <input type="date" value={editForm.date} onChange={(e) => updateEditForm("date", e.target.value)} className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none" />
+                            </div>
+                            <EventTimeSchedule
+                                label="Schedule"
+                                startTime={editForm.startTime}
+                                endTime={editForm.endTime}
+                                onChange={({ startTime, endTime }) =>
+                                    setEditForm((prev) => ({ ...prev, startTime, endTime }))
+                                }
+                            />
+                            <div className="flex items-center gap-2 px-3 py-2 hud-panel-sm bg-background/40 border border-border/40 text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                                <Clock className="w-4 h-4 text-primary shrink-0" />
+                                <span>Previously saved:</span>
+                                <span className="text-foreground font-bold normal-case tracking-normal">{editingEvent.time || "—"}</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">TYPE</label>
+                                    <select value={editForm.type} onChange={(e) => updateEditForm("type", e.target.value)} className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none">
+                                        <option value="meeting">MEETING</option>
+                                        <option value="workshop">WORKSHOP</option>
+                                        <option value="social">SOCIAL</option>
+                                        <option value="hackathon">HACKATHON</option>
+                                        <option value="presentation">PRESENTATION</option>
+                                        <option value="info_session">INFO SESSION</option>
+                                        <option value="networking">NETWORKING</option>
+                                    </select>
+                                </div>
+                                <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">STATUS</label>
+                                    <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none">
+                                        <option value="upcoming">UPCOMING</option>
+                                        <option value="ongoing">ONGOING</option>
+                                        <option value="past">PAST</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">MAX CAPACITY</label>
+                                <input type="number" min="1" value={editForm.maxAttendees} onChange={(e) => updateEditForm("maxAttendees", e.target.value)} placeholder="Unlimited" className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none" />
+                            </div>
+                            <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">LOCATION</label>
+                                    <button type="button" onClick={() => updateEditForm("isVirtual", !editForm.isVirtual)} className={cn("flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-1 hud-panel-sm uppercase tracking-widest border", editForm.isVirtual ? "bg-primary/10 border-primary/50 text-primary" : "bg-card/40 border-border/40 text-muted-foreground")}>
+                                        <Globe className="w-3 h-3" /> {editForm.isVirtual ? "VIRTUAL" : "PHYSICAL"}
+                                    </button>
+                                </div>
+                                {editForm.isVirtual ? (
+                                    <input type="url" value={editForm.virtualLink} onChange={(e) => updateEditForm("virtualLink", e.target.value)} placeholder="https://..." className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none" />
+                                ) : (
+                                    <input type="text" value={editForm.location} onChange={(e) => updateEditForm("location", e.target.value)} placeholder="e.g. OLIN 102" className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none" />
+                                )}
+                            </div>
+                            <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                <div className="flex items-center justify-between mb-3 border-b border-border/40 pb-2">
+                                    <div className="flex items-center gap-2">
+                                        <CalendarDays className="w-4 h-4 text-primary" />
+                                        <div>
+                                            <p className="text-[10px] font-mono font-bold text-foreground uppercase tracking-widest">RECURRING EVENT</p>
+                                            <p className="text-[9px] font-mono text-muted-foreground uppercase">One record — repeats weekly.</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => updateEditForm("isRecurring", !editForm.isRecurring)}
+                                        className={cn("w-10 h-5 border transition-all relative hud-panel-sm", editForm.isRecurring ? "bg-primary/20 border-primary" : "bg-background/50 border-border/50")}
+                                    >
+                                        <span className={cn("absolute top-[1px] w-4 h-4 bg-primary transition-all", editForm.isRecurring ? "left-[18px] glow-border shadow-[0_0_8px_rgba(203,247,2,1)]" : "left-0.5 bg-muted-foreground")} />
+                                    </button>
+                                </div>
+                                <div className={cn("transition-all duration-300 overflow-hidden", editForm.isRecurring ? "max-h-20 opacity-100 mt-2" : "max-h-0 opacity-0")}>
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                                        <span>SESSIONS (WEEKS)</span>
+                                        <span className="text-primary">{editForm.recurrenceWeeks}</span>
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min="2"
+                                        max="16"
+                                        value={editForm.recurrenceWeeks}
+                                        onChange={(e) => updateEditForm("recurrenceWeeks", parseInt(e.target.value, 10))}
+                                        className="w-full accent-primary"
+                                    />
+                                </div>
+                            </div>
+                            <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">TAGS (CSV)</label>
+                                <input type="text" value={editForm.tags} onChange={(e) => updateEditForm("tags", e.target.value)} placeholder="e.g. REACT, FRONTEND" className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none" />
+                            </div>
+                            <div className="flex items-center justify-between bg-primary/5 border border-primary/20 p-4 hud-panel-sm">
+                                <span className="text-[10px] font-mono font-bold text-primary uppercase tracking-widest">FEATURED EVENT</span>
+                                <button type="button" onClick={() => updateEditForm("featured", !editForm.featured)} className={cn("w-10 h-5 border transition-all relative hud-panel-sm", editForm.featured ? "bg-primary/20 border-primary" : "bg-background/50 border-border/50")}>
+                                    <span className={cn("absolute top-[1px] w-4 h-4 bg-primary transition-all", editForm.featured ? "left-[18px]" : "left-0.5 bg-muted-foreground")} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-6 pt-2 flex flex-wrap gap-3 relative z-10 items-center justify-between">
+                            <button
+                                type="button"
+                                onClick={() => editingEvent && handleDeleteEvent(editingEvent.id)}
+                                disabled={editSaving || deletingId === editingEvent?.id}
+                                className="flex items-center gap-2 py-3 px-4 hud-panel-sm border border-destructive/50 text-destructive text-xs font-mono font-bold uppercase tracking-widest hover:bg-destructive/10 transition-all disabled:opacity-50"
+                            >
+                                {deletingId === editingEvent?.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                {deletingId === editingEvent?.id ? "DELETING..." : "DELETE EVENT"}
+                            </button>
+                            <div className="flex gap-3">
+                                <button onClick={() => setEditingEvent(null)} className="py-3 px-5 hud-panel-sm border border-border/50 text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest hover:bg-accent hover:text-foreground transition-all">CANCEL</button>
+                                <button onClick={handleEdit} disabled={editSaving || !editForm.title.trim() || !editForm.date} className="py-3 px-5 hud-panel bg-primary text-primary-foreground text-xs font-mono font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border focus:outline-none disabled:opacity-50 flex items-center justify-center gap-2">
+                                    {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                    {editSaving ? "SAVING..." : "SAVE CHANGES"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

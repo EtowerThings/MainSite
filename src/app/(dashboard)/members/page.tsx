@@ -4,13 +4,12 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { isAdmin, isPresident } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES, ADMIN_ROLES } from "@/lib/roles";
-import { useMembers } from "@/hooks/useFirestore";
+import { useMembers, useEvents, countMemberAttendanceOccurrences, type MemberItem } from "@/hooks/useFirestore";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
     Users,
     Search,
-    Mail,
     Star,
     Shield,
     Crown,
@@ -34,31 +33,35 @@ const roleConfig: Record<string, { label: string; color: string; icon: React.Rea
     events: { label: "EVENTS", color: "bg-chart-3/10 border-chart-3/50 text-chart-3", icon: <Star className="w-3.5 h-3.5" /> },
     finance: { label: "FINANCE", color: "bg-chart-1/10 border-chart-1/50 text-chart-1", icon: <Briefcase className="w-3.5 h-3.5" /> },
     associate: { label: "ASSOCIATE", color: "bg-chart-4/10 border-chart-4/50 text-chart-4", icon: <User className="w-3.5 h-3.5" /> },
-    resident: { label: "MEMBER", color: "bg-background border-border/50 text-muted-foreground", icon: <User className="w-3.5 h-3.5" /> },
+    resident: { label: "RESIDENT", color: "bg-background border-border/50 text-muted-foreground", icon: <User className="w-3.5 h-3.5" /> },
     alumni: { label: "ALUMNI", color: "bg-chart-5/10 border-chart-5/50 text-chart-5", icon: <User className="w-3.5 h-3.5" /> },
 };
 
 export default function MembersPage() {
     const { profile } = useAuth();
     const { data: members, loading } = useMembers();
+    const { data: events } = useEvents();
     const [search, setSearch] = useState("");
+
+    /** Distinct event sessions (including each recurring occurrence) marked present. */
+    const getAttendedCount = (memberId: string) => countMemberAttendanceOccurrences(events, memberId);
     const [roleFilter, setRoleFilter] = useState<string>("all");
-    const [selectedMember, setSelectedMember] = useState<any | null>(null);
+    const [selectedMember, setSelectedMember] = useState<MemberItem | null>(null);
     const [removingId, setRemovingId] = useState<string | null>(null);
     const [removeConfirm, setRemoveConfirm] = useState<string | null>(null);
+    const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
 
     const userIsAdmin = isAdmin(profile?.role);
     const userIsPresident = isPresident(profile?.role);
 
     const filtered = members
-        .filter((m) => roleFilter === "all" || m.role === roleFilter || (roleFilter === "eboard" && ADMIN_ROLES.includes(m.role as any)))
+        .filter((m) => roleFilter === "all" || m.role === roleFilter || (roleFilter === "residents" && (m.role === "resident" || ADMIN_ROLES.includes(m.role as any))))
         .filter((m) => m.name.toLowerCase().includes(search.toLowerCase()) || m.standoutSkill.toLowerCase().includes(search.toLowerCase()));
 
     const roleCounts = {
         total: members.length,
-        eboard: members.filter((m) => ADMIN_ROLES.includes(m.role as any)).length,
+        residents: members.filter((m) => m.role === "resident" || ADMIN_ROLES.includes(m.role as any)).length,
         associates: members.filter((m) => m.role === "associate").length,
-        residents: members.filter((m) => m.role === "resident").length,
         alumni: members.filter((m) => m.role === "alumni").length,
     };
 
@@ -82,9 +85,9 @@ export default function MembersPage() {
             {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                    { label: "E-BOARD", value: roleCounts.eboard, color: "text-chart-2", border: "border-chart-2/40", bg: "bg-chart-2/5" },
+                    { label: "RESIDENTS", value: roleCounts.residents, color: "text-chart-2", border: "border-chart-2/40", bg: "bg-chart-2/5" },
                     { label: "ASSOCIATES", value: roleCounts.associates, color: "text-primary", border: "border-primary/40", bg: "bg-primary/5" },
-                    { label: "MEMBERS", value: roleCounts.residents, color: "text-chart-4", border: "border-chart-4/40", bg: "bg-chart-4/5" },
+                    { label: "MEMBERS", value: roleCounts.total, color: "text-chart-4", border: "border-chart-4/40", bg: "bg-chart-4/5" },
                     { label: "ALUMNI", value: roleCounts.alumni, color: "text-chart-5", border: "border-chart-5/40", bg: "bg-chart-5/5" },
                 ].map((stat) => (
                     <div key={stat.label} className={cn("hud-corners border p-5 text-center relative scanlines overflow-hidden group", stat.bg, stat.border)}>
@@ -108,7 +111,7 @@ export default function MembersPage() {
                     />
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto overflow-x-auto custom-scroll pb-1 sm:pb-0 bg-card/40 border border-border/30 p-2 hud-panel-sm">
-                    {["all", "eboard", "resident", "associate", "alumni"].map((r) => (
+                    {["all", "residents", "resident", "associate", "alumni"].map((r) => (
                         <button
                             key={r}
                             onClick={() => setRoleFilter(r)}
@@ -119,7 +122,7 @@ export default function MembersPage() {
                                     : "bg-background/50 border-border/50 text-muted-foreground hover:bg-accent hover:text-foreground"
                             )}
                         >
-                            {r === "all" ? "ALL" : r === "eboard" ? "E-BOARD" : r === "resident" ? "MEMBERS" : r === "associate" ? "ASSISTANTS" : "ALUMNI"}
+                            {r === "all" ? "ALL" : r === "residents" ? "RESIDENTS" : r === "resident" ? "RESIDENT" : r === "associate" ? "ASSOCIATES" : "ALUMNI"}
                         </button>
                     ))}
                 </div>
@@ -159,8 +162,9 @@ export default function MembersPage() {
                                         </div>
                                     )}
                                     <div className="flex-1 min-w-0 pt-0.5">
-                                        <div className="flex items-center justify-between gap-2 mb-1">
-                                            <h3 className="font-bold font-mono tracking-tight uppercase truncate group-hover:text-primary transition-colors pr-2">{member.name}</h3>
+                                        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                                            <h3 className="font-bold font-mono tracking-tight uppercase truncate group-hover:text-primary transition-colors">{member.name}</h3>
+                                            <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-muted-foreground/90 shrink-0">{member.standoutSkill}</span>
                                             {member.linkedin && (
                                                 <a href={member.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1 hud-panel-sm bg-background border border-border/50 text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors shrink-0">
                                                     <ExternalLink className="w-3.5 h-3.5" />
@@ -173,12 +177,10 @@ export default function MembersPage() {
                                     </div>
                                 </div>
 
-                                <div className="mt-2 mb-4 p-3 hud-corners bg-background/40 border border-border/40 relative z-10 flex items-start gap-3">
-                                    <Star className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                                    <div>
-                                        <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-1">PRIMARY SPECIALTY</div>
-                                        <div className="font-bold font-mono text-xs uppercase tracking-tight text-foreground/90">{member.standoutSkill}</div>
-                                    </div>
+                                <div className="mt-2 mb-4 p-3 hud-corners bg-background/40 border border-border/40 relative z-10">
+                                    <p className={cn("text-xs font-mono text-foreground/90 leading-relaxed line-clamp-3", !member.bio && "text-muted-foreground italic")}>
+                                        {member.bio || "No bio."}
+                                    </p>
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-2 relative z-10">
@@ -191,16 +193,10 @@ export default function MembersPage() {
                                         <div className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">UPLOADS</div>
                                     </div>
                                     <div className="hud-panel-sm bg-background/60 border border-border/40 py-2.5 px-1 text-center group-hover:border-primary/30 transition-colors">
-                                        <div className="text-sm font-black text-chart-4 font-mono">{member.attendance}</div>
-                                        <div className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">ATTENDED</div>
+                                        <div className="text-sm font-black text-chart-4 font-mono">{getAttendedCount(member.id)}</div>
+                                        <div className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">EVENTS ATTENDED</div>
                                     </div>
                                 </div>
-
-                                {userIsAdmin && (
-                                    <div className="mt-4 pt-3 border-t border-border/40 flex items-center gap-2 text-[10px] font-mono text-muted-foreground relative z-10 break-all">
-                                        <Mail className="w-3.5 h-3.5 shrink-0" /> {member.email}
-                                    </div>
-                                )}
                             </div>
                         );
                     })}
@@ -250,19 +246,42 @@ export default function MembersPage() {
                                     <h2 className="text-3xl font-black uppercase tracking-tight mb-2 text-center sm:text-left">{selectedMember.name}</h2>
 
                                     <div className="flex flex-wrap items-center gap-2 mb-4 justify-center sm:justify-start">
-                                        <span className={cn("inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm", roleConfig[selectedMember.role]?.color || roleConfig.resident.color)}>
-                                            {roleConfig[selectedMember.role]?.icon || roleConfig.resident.icon} {roleConfig[selectedMember.role]?.label || roleConfig.resident.label}
-                                        </span>
+                                        {userIsAdmin ? (
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest">CLEARANCE</label>
+                                                <select
+                                                    value={selectedMember.role}
+                                                    onChange={async (e) => {
+                                                        const newRole = e.target.value;
+                                                        if (!selectedMember?.id) return;
+                                                        setRoleUpdatingId(selectedMember.id);
+                                                        try {
+                                                            await updateDoc(doc(db, "users", selectedMember.id), { role: newRole, updatedAt: serverTimestamp() });
+                                                            setSelectedMember((prev) => (prev ? { ...prev, role: newRole } : null));
+                                                        } catch (err) {
+                                                            console.error("Role update error:", err);
+                                                        } finally {
+                                                            setRoleUpdatingId(null);
+                                                        }
+                                                    }}
+                                                    disabled={roleUpdatingId === selectedMember.id}
+                                                    className={cn("text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm bg-background cursor-pointer", roleConfig[selectedMember.role]?.color || roleConfig.resident.color)}
+                                                >
+                                                    {ALL_ROLES.map((r) => (
+                                                        <option key={r.value} value={r.value}>{r.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        ) : (
+                                            <span className={cn("inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm", roleConfig[selectedMember.role]?.color || roleConfig.resident.color)}>
+                                                {roleConfig[selectedMember.role]?.icon || roleConfig.resident.icon} {roleConfig[selectedMember.role]?.label || roleConfig.resident.label}
+                                            </span>
+                                        )}
                                         {selectedMember.role === "alumni" && selectedMember.openToMentorship && (
                                             <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-widest px-2 py-1.5 border border-chart-2/50 bg-chart-2/10 text-chart-2 hud-panel-sm">
                                                 <Users className="w-3 h-3" /> OPEN TO OUTREACH
                                             </span>
                                         )}
-                                    </div>
-
-                                    <div className="text-sm font-mono text-muted-foreground mb-4 text-center sm:text-left">
-                                        <Mail className="w-4 h-4 inline mr-2 text-primary" />
-                                        {selectedMember.email}
                                     </div>
 
                                     {selectedMember.bio && (
@@ -317,8 +336,8 @@ export default function MembersPage() {
                                             <div className="text-[9px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">UPLOADS</div>
                                         </div>
                                         <div className="hud-panel-sm bg-background/60 border border-border/40 p-3 text-center col-span-2">
-                                            <div className="text-xl font-black text-chart-4 font-mono">{selectedMember.attendance}</div>
-                                            <div className="text-[9px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">ATTENDANCE RATE</div>
+                                            <div className="text-xl font-black text-chart-4 font-mono">{getAttendedCount(selectedMember.id)}</div>
+                                            <div className="text-[9px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">EVENTS ATTENDED</div>
                                         </div>
                                     </div>
 

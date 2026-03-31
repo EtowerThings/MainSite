@@ -1,8 +1,11 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { isAdmin } from "@/lib/roles";
 import { useFeed, useProjects, useEvents, useActionItems } from "@/hooks/useFirestore";
+import type { EventOccurrenceRow } from "@/lib/recurring-events";
+import { expandAllEventOccurrences, occurrenceEventLike } from "@/lib/recurring-events";
 import {
     Activity,
     Clock,
@@ -14,10 +17,18 @@ import {
     MapPin,
     CalendarDays,
     Users,
+    X,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { LinkifyText } from "@/components/linkify-text";
+import { parseEventDate, eventNotOccurredYet, getEventStartMs, formatEventTimePreview } from "@/lib/event-dates";
+
+function formatOccurrenceDisplayShort(isoYmd: string): string {
+    const d = new Date(isoYmd + "T12:00:00");
+    if (isNaN(d.getTime())) return isoYmd;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 const typeEmoji: Record<string, string> = {
     milestone_update: "🚀",
@@ -42,8 +53,23 @@ export default function DashboardPage() {
     // Active Action Items (Untruncated, we'll slice in render if needed, or just allow scroll)
     const activeDeadlines = actionItems.slice(0, 10);
 
-    // Upcoming Events
-    const upcomingEvents = events.slice(0, 4);
+    const occurrenceRows = useMemo(() => expandAllEventOccurrences(events), [events]);
+
+    // Upcoming Events: only future / not-yet-started (clock-based), sort soonest first, take 4
+    const upcomingEvents = useMemo(() => {
+        return occurrenceRows
+            .filter((e) => eventNotOccurredYet(occurrenceEventLike(e)))
+            .slice()
+            .sort((a, b) => {
+                const ma = getEventStartMs(occurrenceEventLike(a)) ?? Infinity;
+                const mb = getEventStartMs(occurrenceEventLike(b)) ?? Infinity;
+                if (ma !== mb) return ma - mb;
+                return a.title.localeCompare(b.title);
+            })
+            .slice(0, 4);
+    }, [occurrenceRows]);
+
+    const [selectedMatrixEvent, setSelectedMatrixEvent] = useState<EventOccurrenceRow | null>(null);
 
     // Generate Week Matrix (Current Week Mon-Sun)
     const today = new Date();
@@ -197,14 +223,22 @@ export default function DashboardPage() {
                             ) : (
                                 <div className="space-y-2.5">
                                     {upcomingEvents.map((event) => (
-                                        <Link key={event.id} href={`/events`} className="group/item flex flex-col gap-1.5 p-2.5 hud-corners bg-background/40 hover:bg-accent/40 border border-border/40 hover:border-chart-2/40 transition-colors">
+                                        <Link key={event.instanceKey} href={`/events`} className="group/item flex flex-col gap-1.5 p-2.5 hud-corners bg-background/40 hover:bg-accent/40 border border-border/40 hover:border-chart-2/40 transition-colors">
                                             <p className="text-xs font-bold font-mono tracking-tight uppercase truncate text-foreground group-hover/item:text-chart-2 transition-colors">
                                                 {event.title}
                                             </p>
-                                            <div className="flex items-center gap-3 text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-0.5">
-                                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-chart-2/70" /> {event.date}</span>
+                                            <div className="flex flex-col gap-1 mt-0.5">
+                                                <div className="flex items-center gap-3 text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+                                                    <span className="flex items-center gap-1 shrink-0"><Calendar className="w-3 h-3 text-chart-2/70" /> {formatOccurrenceDisplayShort(event.occurrenceDate)}</span>
+                                                    <span className="flex items-center gap-1 shrink-0 normal-case tracking-normal">
+                                                        <Clock className="w-3 h-3 text-warning/70" />
+                                                        {formatEventTimePreview(occurrenceEventLike(event)) || "All day"}
+                                                    </span>
+                                                </div>
                                                 {event.location && (
-                                                    <span className="flex items-center gap-1 truncate"><MapPin className="w-3 h-3 text-chart-2/70" /> {event.location}</span>
+                                                    <span className="flex items-center gap-1 text-[9px] font-mono text-muted-foreground uppercase tracking-widest truncate">
+                                                        <MapPin className="w-3 h-3 text-chart-2/70 shrink-0" /> {event.location}
+                                                    </span>
                                                 )}
                                             </div>
                                         </Link>
@@ -302,18 +336,51 @@ export default function DashboardPage() {
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-1.5 overflow-hidden justify-end">
-                                            {/* Render blocks for events on this day if any */}
-                                            {events.filter(e => {
-                                                if (!e.date) return false;
-                                                const [year, month, dNum] = e.date.split("-").map(Number);
-                                                return dNum === day.dayNum &&
-                                                    month - 1 === day.date.getMonth() &&
-                                                    year === day.date.getFullYear();
-                                            }).slice(0, 2).map((evt, idx) => (
-                                                <div key={idx} className={cn("px-1.5 py-0.5 text-[8px] uppercase tracking-wider truncate border", day.isToday ? "bg-primary/20 border-primary/50 text-primary" : "bg-chart-2/10 border-chart-2/30 text-chart-2")}>
-                                                    {evt.title}
-                                                </div>
-                                            ))}
+                                            {/* Render blocks for events on this day (non-past only); click for details */}
+                                            {occurrenceRows
+                                                .filter((e) => eventNotOccurredYet(occurrenceEventLike(e)))
+                                                .filter((e) => {
+                                                    const d = parseEventDate(e.occurrenceDate);
+                                                    if (!d) return false;
+                                                    return d.getDate() === day.date.getDate() && d.getMonth() === day.date.getMonth() && d.getFullYear() === day.date.getFullYear();
+                                                })
+                                                .slice(0, 2)
+                                                .map((evt) => {
+                                                    const timeLabel = formatEventTimePreview(occurrenceEventLike(evt));
+                                                    return (
+                                                        <button
+                                                            key={evt.instanceKey}
+                                                            type="button"
+                                                            onClick={() => setSelectedMatrixEvent(evt)}
+                                                            className={cn(
+                                                                "px-1.5 py-0.5 min-w-0 text-left border leading-tight max-w-[92px] sm:max-w-[118px] flex flex-col gap-0.5",
+                                                                day.isToday ? "bg-primary/20 border-primary/50 text-primary hover:bg-primary/30" : "bg-chart-2/10 border-chart-2/30 text-chart-2 hover:bg-chart-2/20"
+                                                            )}
+                                                            title={`${evt.title}${timeLabel ? ` — ${timeLabel}` : evt.time ? ` — ${evt.time}` : ""}`}
+                                                        >
+                                                            <span className="text-[8px] uppercase tracking-wider truncate font-semibold">{evt.title}</span>
+                                                            {timeLabel ? (
+                                                                <span
+                                                                    className={cn(
+                                                                        "text-[7px] font-mono normal-case tracking-tight truncate",
+                                                                        day.isToday ? "text-primary/80" : "text-muted-foreground"
+                                                                    )}
+                                                                >
+                                                                    {timeLabel}
+                                                                </span>
+                                                            ) : (
+                                                                <span
+                                                                    className={cn(
+                                                                        "text-[7px] font-mono normal-case",
+                                                                        day.isToday ? "text-primary/70" : "text-muted-foreground/80"
+                                                                    )}
+                                                                >
+                                                                    All day
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
                                             <span className={cn("text-[8px] opacity-0 group-hover/day:opacity-100 transition-opacity flex-shrink-0 ml-1", day.isToday ? "text-primary" : "text-muted-foreground/50")}>[SECURE]</span>
                                         </div>
                                     </div>
@@ -353,6 +420,57 @@ export default function DashboardPage() {
                     )}
                 </div>
             </div>
+
+            {/* Week matrix event detail modal */}
+            {selectedMatrixEvent && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setSelectedMatrixEvent(null)}>
+                    <div
+                        className="hud-panel bg-card border border-primary/40 max-w-md w-full p-5 sm:p-6 scanlines relative glow-border animate-fade-in"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
+                            <h3 className="font-bold font-mono text-lg uppercase tracking-tight text-foreground">{selectedMatrixEvent.title}</h3>
+                            <button type="button" onClick={() => setSelectedMatrixEvent(null)} className="p-1.5 hud-panel-sm border border-border/50 text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div className="space-y-3 text-sm">
+                            <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                                <Calendar className="w-3.5 h-3.5 text-chart-2/70" />
+                                <span className="text-foreground font-bold">{formatOccurrenceDisplayShort(selectedMatrixEvent.occurrenceDate)}</span>
+                            </div>
+                            {selectedMatrixEvent.recurrence && selectedMatrixEvent.recurrence.count > 1 && (
+                                <p className="text-[9px] font-mono text-primary/90 uppercase tracking-widest">Part of weekly series · {selectedMatrixEvent.recurrence.count} sessions</p>
+                            )}
+                            <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                                <Clock className="w-3.5 h-3.5 text-warning/70" />
+                                <span className="text-muted-foreground/80">Time:</span>
+                                <span className="text-foreground font-bold">{selectedMatrixEvent.time || "Not set"}</span>
+                            </div>
+                            {selectedMatrixEvent.location && (
+                                <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                                    <MapPin className="w-3.5 h-3.5 text-chart-2/70" />
+                                    <span className="text-foreground truncate">{selectedMatrixEvent.location}</span>
+                                </div>
+                            )}
+                            <div className="pt-2 border-t border-border/40 mt-2">
+                                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">Description</div>
+                                <p className="text-xs font-mono text-foreground/90 leading-relaxed max-h-32 overflow-y-auto custom-scroll">
+                                    {selectedMatrixEvent.description || "No description."}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="mt-5 pt-4 border-t border-border/40">
+                            <Link
+                                href="/events"
+                                className="block w-full py-2.5 text-center hud-panel-sm bg-primary/10 border border-primary/50 text-primary text-xs font-mono font-bold uppercase tracking-widest hover:bg-primary/20 transition-colors"
+                            >
+                                VIEW FULL CALENDAR
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
