@@ -2,8 +2,9 @@
 
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { isAdmin } from "@/lib/roles";
-import { useFeed, useProjects, useEvents, useActionItems } from "@/hooks/useFirestore";
+import { canAccessAdminCenter } from "@/lib/roles";
+import { useFeed, useProjects, useEvents, useActionItems, useOrgSettings } from "@/hooks/useFirestore";
+import { fiscalLabelFromOrgSettings } from "@/lib/org-fiscal";
 import type { EventOccurrenceRow } from "@/lib/recurring-events";
 import { expandAllEventOccurrences, occurrenceEventLike } from "@/lib/recurring-events";
 import {
@@ -43,8 +44,14 @@ export default function DashboardPage() {
     const { data: feedItems, loading: feedLoading } = useFeed();
     const { data: events, loading: eventsLoading } = useEvents();
     const { data: actionItems, loading: actionItemsLoading, completeActionItem } = useActionItems();
+    const { data: orgSettings } = useOrgSettings(!!user?.uid);
+    const clubFiscalLabel = fiscalLabelFromOrgSettings(
+        orgSettings
+            ? { fiscalTerm: orgSettings.fiscalTerm, fiscalYearTwoDigit: orgSettings.fiscalYearTwoDigit }
+            : null
+    );
 
-    const userIsAdmin = isAdmin(profile?.role);
+    const userHasExecAccess = canAccessAdminCenter(profile?.role);
     const loading = feedLoading || eventsLoading || actionItemsLoading;
 
     // Show more activity items since we have full height now
@@ -99,9 +106,11 @@ export default function DashboardPage() {
             {/* Welcome Header - Compact */}
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-border/50 flex-shrink-0">
                 <div>
-                    <div className="flex items-center gap-2 text-[10px] font-mono text-primary/80 uppercase tracking-widest mb-1">
+                    <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono text-primary/80 uppercase tracking-widest mb-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                         CONNECTION ESTABLISHED
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-primary tabular-nums font-bold">FISCAL {clubFiscalLabel}</span>
                     </div>
                     <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none">
                         WELCOME, <span className="gradient-text-cyber">{profile?.displayName?.split(" ")[0] || "MEMBER"}</span>
@@ -390,7 +399,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Quick Actions (Admin/Eboard) - Only shows if admin and fits gracefully */}
-                    {userIsAdmin && (
+                    {userHasExecAccess && (
                         <div className="flex-shrink-0 hud-corners bg-card/60 border border-primary/40 p-3 sm:p-4 scanlines relative group glow-border">
                             <div className="relative z-10">
                                 <div className="flex items-center gap-2 mb-3 border-b border-primary/30 pb-2">

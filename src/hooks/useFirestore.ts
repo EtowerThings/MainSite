@@ -9,6 +9,7 @@ import {
     addDoc,
     updateDoc,
     deleteDoc,
+    setDoc,
     doc,
     where,
     limit,
@@ -22,6 +23,12 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
+import {
+    ORG_SETTINGS_CLUB_DOC_ID,
+    normalizeYearTwoDigit,
+    parseOrgSettingsRaw,
+    type OrgSettingsData,
+} from "@/lib/org-fiscal";
 
 // ──────────────────────────────────────
 // Generic real-time collection hook
@@ -726,6 +733,208 @@ export function useStartups(enabled: boolean = true) {
         }),
         enabled
     );
+}
+
+// ──────────────────────────────────────
+// Budgets (line items; import CSV / edit in app)
+// ──────────────────────────────────────
+export interface BudgetLineRow {
+    item: string;
+    price: number;
+    quantity: number;
+    notes: string;
+    link: string;
+}
+
+export interface BudgetItem {
+    id: string;
+    title: string;
+    fiscalYear: string;
+    /** Expected headcount for cost-per-attendee. */
+    expectedAttendees: number;
+    rows: BudgetLineRow[];
+    createdBy: string;
+    createdByName: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+function numField(v: unknown): number {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    const n = parseFloat(String(v ?? "").replace(/[$,]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+}
+
+function intField(v: unknown, fallback: number): number {
+    if (typeof v === "number" && Number.isFinite(v)) return Math.max(0, Math.floor(v));
+    const n = parseInt(String(v ?? "").replace(/[,]/g, ""), 10);
+    return Number.isFinite(n) ? Math.max(0, n) : fallback;
+}
+
+function parseBudgetLineRows(raw: unknown): BudgetLineRow[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((row: DocumentData) => {
+        const hasNew = row.item !== undefined || row.price !== undefined || row.quantity !== undefined;
+        if (hasNew) {
+            return {
+                item: String(row.item ?? ""),
+                price: numField(row.price),
+                quantity: Math.max(0, intField(row.quantity, 1)),
+                notes: String(row.notes ?? ""),
+                link: String(row.link ?? ""),
+            };
+        }
+        const cat = String(row.category ?? "");
+        const line = String(row.lineItem ?? row.line_item ?? "");
+        const item = [cat, line].filter(Boolean).join(" — ") || line;
+        const budgeted = numField(row.budgeted);
+        return {
+            item,
+            price: budgeted,
+            quantity: 1,
+            notes: String(row.notes ?? ""),
+            link: "",
+        };
+    });
+}
+
+export function useBudgets(enabled: boolean = true) {
+    const result = useCollection<BudgetItem>(
+        "budgets",
+        [orderBy("updatedAt", "desc")],
+        (raw, id) => ({
+            id,
+            title: raw.title || "Untitled budget",
+            fiscalYear: String(raw.fiscalYear ?? ""),
+            expectedAttendees: intField(raw.expectedAttendees, 0),
+            rows: parseBudgetLineRows(raw.rows),
+            createdBy: raw.createdBy || "",
+            createdByName: raw.createdByName || "",
+            createdAt: formatTimestamp(raw.createdAt),
+            updatedAt: formatTimestamp(raw.updatedAt),
+        }),
+        enabled
+    );
+
+    const createBudget = async (payload: {
+        title: string;
+        fiscalYear: string;
+        expectedAttendees: number;
+        rows: BudgetLineRow[];
+        uid: string;
+        displayName: string;
+    }) => {
+        await addDoc(collection(db, "budgets"), {
+            title: payload.title.trim() || "Untitled budget",
+            fiscalYear: payload.fiscalYear.trim(),
+            expectedAttendees: Math.max(0, Math.floor(payload.expectedAttendees) || 0),
+            rows: payload.rows.map((r) => ({
+                item: r.item,
+                price: r.price,
+                quantity: r.quantity,
+                notes: r.notes,
+                link: r.link,
+            })),
+            createdBy: payload.uid,
+            createdByName: payload.displayName,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+    };
+
+    const updateBudget = async (
+        budgetId: string,
+        updates: Partial<Pick<BudgetItem, "title" | "fiscalYear" | "expectedAttendees" | "rows">>
+    ) => {
+        const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
+        if (updates.title !== undefined) payload.title = updates.title;
+        if (updates.fiscalYear !== undefined) payload.fiscalYear = updates.fiscalYear;
+        if (updates.expectedAttendees !== undefined) {
+            payload.expectedAttendees = Math.max(0, Math.floor(updates.expectedAttendees) || 0);
+        }
+        if (updates.rows !== undefined) {
+            payload.rows = updates.rows.map((r) => ({
+                item: r.item,
+                price: r.price,
+                quantity: r.quantity,
+                notes: r.notes,
+                link: r.link,
+            }));
+        }
+        await updateDoc(doc(db, "budgets", budgetId), payload);
+    };
+
+    const deleteBudget = async (budgetId: string) => {
+        await deleteDoc(doc(db, "budgets", budgetId));
+    };
+
+    return { ...result, createBudget, updateBudget, deleteBudget };
+}
+
+// ──────────────────────────────────────
+// Org-wide settings (club fiscal label, etc.)
+// ──────────────────────────────────────
+export interface OrgSettingsDoc extends OrgSettingsData {
+    id: string;
+}
+
+export function useOrgSettings(enabled: boolean = true) {
+    const [data, setData] = useState<OrgSettingsDoc | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!enabled) {
+            setLoading(false);
+            setData(null);
+            return;
+        }
+        setLoading(true);
+        const ref = doc(db, "orgSettings", ORG_SETTINGS_CLUB_DOC_ID);
+        const unsubscribe = onSnapshot(
+            ref,
+            (snapshot) => {
+                if (!snapshot.exists()) {
+                    setData(null);
+                } else {
+                    const parsed = parseOrgSettingsRaw(snapshot.data() as Record<string, unknown>);
+                    setData({ id: snapshot.id, ...parsed });
+                }
+                setLoading(false);
+            },
+            (err: { code?: string; message?: string }) => {
+                const denied = err.code === "permission-denied";
+                if (denied) {
+                    setData(null);
+                    setError(
+                        "Org settings read was denied. Publish the orgSettings rules from this repo’s firestore.rules (firebase deploy --only firestore:rules), or paste the match /orgSettings block in Firebase Console → Firestore → Rules."
+                    );
+                    console.warn(
+                        "[orgSettings] permission-denied — budgets/events use the default fiscal label until rules allow read on orgSettings/club."
+                    );
+                } else {
+                    console.error("Firestore error (orgSettings):", err);
+                    setError(err.message ?? "Unknown error");
+                }
+                setLoading(false);
+            }
+        );
+        return () => unsubscribe();
+    }, [enabled]);
+
+    const saveOrgSettings = async (payload: OrgSettingsData) => {
+        await setDoc(
+            doc(db, "orgSettings", ORG_SETTINGS_CLUB_DOC_ID),
+            {
+                fiscalTerm: payload.fiscalTerm,
+                fiscalYearTwoDigit: normalizeYearTwoDigit(payload.fiscalYearTwoDigit),
+                updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+        );
+    };
+
+    return { data, loading, error, saveOrgSettings };
 }
 
 // ──────────────────────────────────────

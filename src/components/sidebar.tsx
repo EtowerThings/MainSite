@@ -28,7 +28,7 @@ import {
     Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isAdmin as checkAdmin } from "@/lib/roles";
+import { canAccessAdminCenter as checkExecAccess } from "@/lib/roles";
 import { useState, useEffect } from "react";
 
 interface NavItem {
@@ -73,7 +73,7 @@ export function Sidebar() {
     };
 
     const filteredNav = navItems.filter(
-        (item) => !item.adminOnly || checkAdmin(profile?.role)
+        (item) => !item.adminOnly || checkExecAccess(profile?.role)
     );
 
     const NavContent = () => (

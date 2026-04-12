@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { isAdmin } from "@/lib/roles";
+import { canPostAnnouncement } from "@/lib/roles";
 import { useFeed } from "@/hooks/useFirestore";
 import {
     Activity,
@@ -28,7 +28,7 @@ export default function FeedPage() {
     const { profile } = useAuth();
     const { data: activities, loading, togglePin } = useFeed();
     const [filter, setFilter] = useState<"all" | "pinned">("all");
-    const isEBoard = isAdmin(profile?.role);
+    const isEBoard = canPostAnnouncement(profile?.role);
 
     const filteredActivities = filter === "pinned"
         ? activities.filter((a) => a.pinned)

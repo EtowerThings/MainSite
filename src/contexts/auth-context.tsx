@@ -13,7 +13,20 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
-export type UserRole = "resident" | "associate" | "marketing" | "events" | "finance" | "vice-president" | "president" | "community-manager" | "alumni";
+export type UserRole =
+    | "resident"
+    | "associate"
+    | "marketing"
+    | "events"
+    | "finance"
+    | "vice-president"
+    | "president"
+    | "community-manager"
+    | "vp-events"
+    | "vp-marketing"
+    | "vp-prof-dev"
+    | "vp-finance"
+    | "alumni";
 
 export interface EngagementMetrics {
     attendanceRate?: number;

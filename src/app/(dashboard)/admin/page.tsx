@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
     useInquiries,
@@ -14,9 +14,11 @@ import {
 } from "@/hooks/useFirestore";
 import { expandAllEventOccurrences, occurrenceEventLike, type EventOccurrenceRow } from "@/lib/recurring-events";
 import { getEventStartMs, parseEventDate } from "@/lib/event-dates";
-import { isAdmin } from "@/lib/roles";
+import { isAdmin, canAccessAdminCenter, canManageEventAttendance } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
+import { BudgetAdminTab } from "@/components/budget-admin-tab";
+import { ClubFiscalAdminTab } from "@/components/club-fiscal-admin-tab";
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
@@ -42,6 +44,10 @@ import {
     ClipboardCheck,
     Search,
     CalendarDays,
+    Wallet,
+    CalendarClock,
+    LayoutGrid,
+    ArrowLeft,
 } from "lucide-react";
 
 function formatOccurrenceDisplay(isoYmd: string): string {
@@ -76,6 +82,7 @@ type AttendanceTableItem =
 
 type AdminTab =
     | "announcements"
+    | "budgets"
     | "actionItems"
     | "startups"
     | "applications"
@@ -84,20 +91,37 @@ type AdminTab =
     | "resources"
     | "profiles"
     | "eventAttendance"
-    | "skillsExport";
+    | "skillsExport"
+    | "clubFiscal";
+
+function adminTabAllowed(
+    tab: AdminTab,
+    role: string | undefined,
+    core: boolean,
+    attendance: boolean
+): boolean {
+    if (tab === "announcements" || tab === "budgets") return canAccessAdminCenter(role);
+    if (tab === "clubFiscal") return core;
+    if (tab === "eventAttendance") return attendance;
+    return core;
+}
 
 export default function AdminPage() {
     const { profile, user } = useAuth();
-    const userIsAdmin = isAdmin(profile?.role);
-    const { data: inquiries, loading: inquiriesLoading, replyToInquiry, publishToFaq } = useInquiries(userIsAdmin);
-    const { data: resources, loading: resourcesLoading, approveResource, rejectResource } = useResources(false, userIsAdmin);
-    const { data: projects, loading: projectsLoading } = useProjects(userIsAdmin);
-    const { data: members, loading: membersLoading } = useMembers(userIsAdmin);
-    const { data: actionItems, loading: actionItemsLoading } = useActionItems(userIsAdmin);
-    const { data: startups, loading: startupsLoading } = useStartups(userIsAdmin);
-    const { data: events, loading: eventsLoading, setEventOccurrenceAttendance } = useEvents(userIsAdmin);
+    const userIsCoreAdmin = isAdmin(profile?.role);
+    const userHasExecAccess = canAccessAdminCenter(profile?.role);
+    const userCanManageAttendance = canManageEventAttendance(profile?.role);
+    const userSubscribesEvents = userIsCoreAdmin || profile?.role === "vp-events";
 
-    const [activeTab, setActiveTab] = useState<AdminTab>("announcements");
+    const { data: inquiries, loading: inquiriesLoading, replyToInquiry, publishToFaq } = useInquiries(userIsCoreAdmin);
+    const { data: resources, loading: resourcesLoading, approveResource, rejectResource } = useResources(false, userIsCoreAdmin);
+    const { data: projects, loading: projectsLoading } = useProjects(userIsCoreAdmin);
+    const { data: members, loading: membersLoading } = useMembers(userHasExecAccess);
+    const { data: actionItems, loading: actionItemsLoading } = useActionItems(userIsCoreAdmin);
+    const { data: startups, loading: startupsLoading } = useStartups(userIsCoreAdmin);
+    const { data: events, loading: eventsLoading, setEventOccurrenceAttendance } = useEvents(userSubscribesEvents);
+
+    const [activeTab, setActiveTab] = useState<AdminTab | null>(null);
     const [replyText, setReplyText] = useState("");
     const [replyingTo, setReplyingTo] = useState<string | null>(null);
 
@@ -128,15 +152,17 @@ export default function AdminPage() {
     const [attendanceRowExpandKey, setAttendanceRowExpandKey] = useState<string | null>(null);
     const [attendanceTableSearch, setAttendanceTableSearch] = useState("");
     const [attendanceSaving, setAttendanceSaving] = useState(false);
+    const [rosterSearch, setRosterSearch] = useState("");
 
     const loading =
-        inquiriesLoading ||
-        resourcesLoading ||
-        projectsLoading ||
-        membersLoading ||
-        actionItemsLoading ||
-        startupsLoading ||
-        eventsLoading;
+        (userIsCoreAdmin &&
+            (inquiriesLoading ||
+                resourcesLoading ||
+                projectsLoading ||
+                actionItemsLoading ||
+                startupsLoading)) ||
+        (userHasExecAccess && membersLoading) ||
+        (userSubscribesEvents && eventsLoading);
 
     const pendingInquiries = inquiries.filter((i) => i.status === "pending");
     const pendingResources = resources.filter((r) => !r.approved);
@@ -278,7 +304,91 @@ export default function AdminPage() {
         URL.revokeObjectURL(a.href);
     };
 
-    if (!userIsAdmin) {
+    const csvEscape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+
+    const rosterSpreadsheetRows = useMemo(() => {
+        const q = rosterSearch.toLowerCase().trim();
+        if (!q) return members;
+        return members.filter((m) => {
+            const roleLabel = getRoleLabel(m.role).toLowerCase();
+            const skillsBlob = (m.skills || []).join(" ").toLowerCase();
+            const hay = [
+                m.name,
+                m.email,
+                m.role,
+                roleLabel,
+                m.status,
+                m.standoutSkill,
+                skillsBlob,
+                m.joinDate,
+                m.linkedin ?? "",
+                m.bio ?? "",
+            ]
+                .join(" ")
+                .toLowerCase();
+            return hay.includes(q);
+        });
+    }, [members, rosterSearch]);
+
+    const downloadRosterCsv = () => {
+        const header =
+            "ID,Name,Email,Role,Role Label,Status,Standout Skill,Skills,Join Date,Projects,Uploads,Attendance,LinkedIn,Bio,Open To Mentorship\n";
+        const rows = rosterSpreadsheetRows.map((m) =>
+            [
+                csvEscape(m.id),
+                csvEscape(m.name),
+                csvEscape(m.email),
+                csvEscape(m.role),
+                csvEscape(getRoleLabel(m.role)),
+                csvEscape(m.status),
+                csvEscape(m.standoutSkill),
+                csvEscape((m.skills || []).join("; ")),
+                csvEscape(m.joinDate),
+                csvEscape(String(m.projects)),
+                csvEscape(String(m.uploads)),
+                csvEscape(m.attendance),
+                csvEscape(m.linkedin ?? ""),
+                csvEscape(m.bio ?? ""),
+                csvEscape(m.openToMentorship ? "yes" : "no"),
+            ].join(",")
+        );
+        const csv = header + rows.join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `members-roster-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
+    useEffect(() => {
+        if (!userHasExecAccess) return;
+        if (activeTab === null) return;
+        if (!adminTabAllowed(activeTab, profile?.role, userIsCoreAdmin, userCanManageAttendance)) {
+            setActiveTab(null);
+        }
+    }, [userHasExecAccess, profile?.role, activeTab, userIsCoreAdmin, userCanManageAttendance]);
+
+    const allTabDefs: { key: AdminTab; label: string; icon: React.ReactNode; count?: number }[] = [
+        { key: "announcements", label: "BROADCASTS", icon: <Megaphone className="w-4 h-4" /> },
+        { key: "budgets", label: "BUDGETS", icon: <Wallet className="w-4 h-4" /> },
+        { key: "clubFiscal", label: "CLUB FISCAL", icon: <CalendarClock className="w-4 h-4" /> },
+        { key: "actionItems", label: "DEADLINES", icon: <CheckSquare className="w-4 h-4" /> },
+        { key: "startups", label: "STARTUPS", icon: <Rocket className="w-4 h-4" /> },
+        { key: "applications", label: "APPLICATIONS", icon: <UserPlus className="w-4 h-4" />, count: pendingApplications.length },
+        { key: "inquiries", label: "COMMUNICATIONS", icon: <MessageSquare className="w-4 h-4" />, count: pendingInquiries.length },
+        { key: "pitches", label: "PROPOSALS", icon: <FileText className="w-4 h-4" />, count: pendingPitches.length },
+        { key: "resources", label: "DATA LOGS", icon: <BookOpen className="w-4 h-4" />, count: pendingResources.length },
+        { key: "profiles", label: "ROSTER", icon: <Users className="w-4 h-4" />, count: members.length },
+        { key: "eventAttendance", label: "ATTENDANCE", icon: <ClipboardCheck className="w-4 h-4" /> },
+        { key: "skillsExport", label: "SKILLS EXPORT", icon: <List className="w-4 h-4" /> },
+    ];
+
+    const tabs = allTabDefs.filter((t) =>
+        adminTabAllowed(t.key, profile?.role, userIsCoreAdmin, userCanManageAttendance)
+    );
+
+    if (!userHasExecAccess) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in relative z-10 hud-panel bg-card/40 border border-destructive/40 scanlines p-8 text-center max-w-lg mx-auto mt-20">
                 <Shield className="w-16 h-16 text-destructive mb-6" />
@@ -290,19 +400,6 @@ export default function AdminPage() {
             </div>
         );
     }
-
-    const tabs: { key: AdminTab; label: string; icon: React.ReactNode; count?: number }[] = [
-        { key: "announcements", label: "BROADCASTS", icon: <Megaphone className="w-4 h-4" /> },
-        { key: "actionItems", label: "DEADLINES", icon: <CheckSquare className="w-4 h-4" /> },
-        { key: "startups", label: "STARTUPS", icon: <Rocket className="w-4 h-4" /> },
-        { key: "applications", label: "APPLICATIONS", icon: <UserPlus className="w-4 h-4" />, count: pendingApplications.length },
-        { key: "inquiries", label: "COMMUNICATIONS", icon: <MessageSquare className="w-4 h-4" />, count: pendingInquiries.length },
-        { key: "pitches", label: "PROPOSALS", icon: <FileText className="w-4 h-4" />, count: pendingPitches.length },
-        { key: "resources", label: "DATA LOGS", icon: <BookOpen className="w-4 h-4" />, count: pendingResources.length },
-        { key: "profiles", label: "ROSTER", icon: <Users className="w-4 h-4" />, count: approvedMembers.length },
-        { key: "eventAttendance", label: "ATTENDANCE", icon: <ClipboardCheck className="w-4 h-4" /> },
-        { key: "skillsExport", label: "SKILLS EXPORT", icon: <List className="w-4 h-4" /> },
-    ];
 
     const handleReply = async (inquiryId: string) => {
         if (!replyText.trim()) return;
@@ -432,7 +529,7 @@ export default function AdminPage() {
     };
 
     return (
-        <div className="flex flex-col min-h-[calc(100vh-4rem)] animate-fade-in space-y-6 relative z-10 max-w-5xl mx-auto">
+        <div className="flex flex-col min-h-[calc(100vh-4rem)] animate-fade-in space-y-6 relative z-10 max-w-6xl mx-auto">
             {/* Header */}
             <div className="border-b border-border/50 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
@@ -451,34 +548,88 @@ export default function AdminPage() {
                 </div>
             </div>
 
-            {/* Tabs (Frequency Switcher) */}
-            <div className="flex gap-2 w-full overflow-x-auto custom-scroll pb-2">
-                {tabs.map((tab) => (
+            {/* Tool gallery (default) */}
+            {!loading && activeTab === null && (
+                <div className="space-y-4">
+                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest border-l-2 border-primary/40 pl-3 max-w-xl leading-relaxed">
+                        Select a module below. Your clearance determines which tiles appear.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {tabs.map((tab) => (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                onClick={() => setActiveTab(tab.key)}
+                                className="group text-left hud-panel bg-card/50 border border-border/50 p-5 sm:p-6 scanlines relative overflow-hidden transition-all hover:border-primary/45 hover:bg-primary/[0.06] hover:shadow-[0_0_24px_rgba(203,247,2,0.12)]"
+                            >
+                                <div className="absolute top-0 right-0 w-24 h-0.5 bg-gradient-to-r from-transparent to-primary/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="relative z-10 flex items-start justify-between gap-3">
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-sm border border-primary/35 bg-primary/10 text-primary [&_svg]:h-6 [&_svg]:w-6">
+                                        {tab.icon}
+                                    </div>
+                                    {tab.count !== undefined && tab.count > 0 && (
+                                        <span className="text-[10px] font-mono font-bold tabular-nums px-2 py-1 border border-primary/35 bg-primary/15 text-primary">
+                                            {tab.count}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="relative z-10 mt-4 space-y-1">
+                                    <div className="text-xs font-mono font-bold uppercase tracking-widest text-foreground group-hover:text-primary transition-colors">
+                                        {tab.label}
+                                    </div>
+                                    <div className="text-[10px] font-mono text-muted-foreground group-hover:text-muted-foreground/90 flex items-center gap-1">
+                                        Open
+                                        <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                                    </div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Tabs (after a tool is selected) */}
+            {!loading && activeTab !== null && (
+                <div className="flex gap-2 w-full overflow-x-auto custom-scroll pb-2 items-stretch">
                     <button
-                        key={tab.key}
-                        onClick={() => setActiveTab(tab.key)}
-                        className={cn(
-                            "flex items-center gap-2.5 px-5 py-3 hud-panel-sm text-[10px] font-mono font-bold uppercase tracking-widest whitespace-nowrap transition-all border shrink-0",
-                            activeTab === tab.key
-                                ? "bg-primary text-primary-foreground border-primary glow-border shadow-[0_0_15px_rgba(203,247,2,0.3)]"
-                                : "bg-card/40 border-border/40 text-muted-foreground hover:bg-accent hover:text-foreground"
-                        )}
+                        type="button"
+                        onClick={() => setActiveTab(null)}
+                        className="flex items-center gap-2 px-4 py-3 hud-panel-sm text-[10px] font-mono font-bold uppercase tracking-widest whitespace-nowrap transition-all border shrink-0 border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
                     >
-                        {tab.icon}
-                        {tab.label}
-                        {tab.count !== undefined && tab.count > 0 && (
-                            <span className={cn(
-                                "text-[9px] px-1.5 py-0.5 border",
-                                activeTab === tab.key
-                                    ? "bg-background/20 border-background/40 text-primary-foreground"
-                                    : "bg-primary/10 border-primary/30 text-primary animate-pulse"
-                            )}>
-                                {tab.count}
-                            </span>
-                        )}
+                        <ArrowLeft className="w-4 h-4" />
+                        <LayoutGrid className="w-4 h-4" />
+                        All tools
                     </button>
-                ))}
-            </div>
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setActiveTab(tab.key)}
+                            className={cn(
+                                "flex items-center gap-2.5 px-5 py-3 hud-panel-sm text-[10px] font-mono font-bold uppercase tracking-widest whitespace-nowrap transition-all border shrink-0",
+                                activeTab === tab.key
+                                    ? "bg-primary text-primary-foreground border-primary glow-border shadow-[0_0_15px_rgba(203,247,2,0.3)]"
+                                    : "bg-card/40 border-border/40 text-muted-foreground hover:bg-accent hover:text-foreground"
+                            )}
+                        >
+                            {tab.icon}
+                            {tab.label}
+                            {tab.count !== undefined && tab.count > 0 && (
+                                <span
+                                    className={cn(
+                                        "text-[9px] px-1.5 py-0.5 border",
+                                        activeTab === tab.key
+                                            ? "bg-background/20 border-background/40 text-primary-foreground"
+                                            : "bg-primary/10 border-primary/30 text-primary animate-pulse"
+                                    )}
+                                >
+                                    {tab.count}
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {loading && (
                 <div className="flex flex-col items-center justify-center py-24 gap-4 flex-1">
@@ -487,7 +638,7 @@ export default function AdminPage() {
                 </div>
             )}
 
-            {!loading && (
+            {!loading && activeTab !== null && (
                 <div className="flex-1 space-y-6">
                     {/* ── Announcements Tab ── */}
                     {activeTab === "announcements" && (
@@ -521,6 +672,10 @@ export default function AdminPage() {
                             </div>
                         </div>
                     )}
+
+                    {activeTab === "budgets" && <BudgetAdminTab />}
+
+                    {activeTab === "clubFiscal" && <ClubFiscalAdminTab />}
 
                     {/* ── Action Items Tab ── */}
                     {activeTab === "actionItems" && (
@@ -840,50 +995,189 @@ export default function AdminPage() {
                         </div>
                     )}
 
-                    {/* ── Members Tab ── */}
+                    {/* ── Members Tab (spreadsheet) ── */}
                     {activeTab === "profiles" && (
                         <div className="space-y-4">
-                            {approvedMembers.length === 0 ? (
+                            <div className="hud-panel bg-card/60 border border-primary/40 p-4 sm:p-6 scanlines relative">
+                                <div className="absolute top-0 right-0 w-32 h-1 bg-gradient-to-r from-transparent to-primary/50" />
+                                <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div>
+                                        <h3 className="font-bold text-sm sm:text-base flex items-center gap-2 uppercase tracking-tight text-primary">
+                                            <Users className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                                            FULL ROSTER MATRIX
+                                        </h3>
+                                        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mt-1 max-w-xl">
+                                            All members (including pending / rejected). Search filters the table and CSV export.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto lg:shrink-0">
+                                        <div className="relative flex-1 min-w-0 sm:min-w-[220px]">
+                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                            <input
+                                                type="text"
+                                                value={rosterSearch}
+                                                onChange={(e) => setRosterSearch(e.target.value)}
+                                                placeholder="Search name, email, role, status, skills…"
+                                                className="w-full pl-8 pr-3 py-2.5 hud-panel-sm bg-background/50 border border-border/50 focus:border-primary/50 text-xs font-mono focus:outline-none"
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={downloadRosterCsv}
+                                            disabled={rosterSpreadsheetRows.length === 0}
+                                            className="hud-panel bg-primary text-primary-foreground px-5 py-2.5 text-[10px] font-mono font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border disabled:opacity-50 flex items-center justify-center gap-2 shrink-0"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Export CSV ({rosterSpreadsheetRows.length})
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {members.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-16 hud-panel bg-card/40 border border-border/40 scanlines">
                                     <Users className="w-12 h-12 text-muted-foreground/30 mb-4 relative z-10" />
                                     <p className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest relative z-10">DB EMPTY.</p>
                                 </div>
-                            ) : approvedMembers.map((member, i) => (
-                                <div key={member.id} className={cn("group p-4 transition-all relative flex flex-col sm:flex-row items-center gap-4 scanlines", i % 2 === 0 ? 'hud-panel-sm' : 'hud-corners', "bg-card/60 border border-border/40 hover:border-primary/40")}>
-                                    <div className="w-12 h-12 hud-corners bg-background flex items-center justify-center font-black text-lg border border-border/50 text-muted-foreground shrink-0 relative z-10">
-                                        {member.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                                    </div>
-                                    <div className="flex-1 min-w-0 text-center sm:text-left relative z-10 w-full">
-                                        <p className="font-bold font-mono tracking-tight uppercase truncate">{member.name}</p>
-                                        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 text-[10px] font-mono text-muted-foreground uppercase tracking-widest mt-1">
-                                            <span className="truncate">{member.email}</span>
-                                            <div className="w-1 h-1 bg-border rotate-45 hidden sm:block" />
-                                            <span className="text-primary/80">{getRoleLabel(member.role)}</span>
-                                            <div className="w-1 h-1 bg-border rotate-45 hidden sm:block" />
-                                            <span className="truncate">SPEC: {member.standoutSkill}</span>
-                                        </div>
-                                    </div>
-                                    <div className="w-full sm:w-auto relative z-10 mt-3 sm:mt-0 space-y-1.5">
-                                        <div className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest text-center sm:text-left ml-1">ASSIGN CLEARANCE</div>
-                                        <select
-                                            value={member.role}
-                                            onChange={async (e) => {
-                                                const newRole = e.target.value;
-                                                try {
-                                                    await updateDoc(doc(db, "users", member.id), { role: newRole, updatedAt: serverTimestamp() });
-                                                } catch (err) {
-                                                    console.error("Role update error:", err);
-                                                }
-                                            }}
-                                            className="w-full sm:w-40 text-[10px] font-mono font-bold uppercase tracking-widest px-3 py-2 hud-panel-sm bg-background/80 border border-border/50 text-foreground focus:outline-none focus:border-primary/50 transition-colors cursor-pointer appearance-none"
-                                        >
-                                            {ALL_ROLES.map((r) => (
-                                                <option key={r.value} value={r.value}>{r.label}</option>
-                                            ))}
-                                        </select>
+                            ) : rosterSpreadsheetRows.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-16 hud-panel bg-card/40 border border-border/40 scanlines">
+                                    <Search className="w-12 h-12 text-muted-foreground/30 mb-4 relative z-10" />
+                                    <p className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest relative z-10">
+                                        NO ROWS MATCH SEARCH.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="hud-panel bg-card/40 border border-border/40 p-2 sm:p-4 scanlines overflow-hidden">
+                                    <div className="overflow-x-auto custom-scroll -mx-1 px-1 max-h-[min(70vh,720px)] overflow-y-auto">
+                                        <table className="w-full text-left border-collapse min-w-[1100px]">
+                                            <thead className="sticky top-0 z-[1] bg-card/95 backdrop-blur-sm border-b border-border/50">
+                                                <tr className="text-[9px] font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                                                    <th className="py-2.5 pr-3 pl-1 whitespace-nowrap">Name</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">Email</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">Status</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">Role</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">Standout</th>
+                                                    <th className="py-2.5 pr-3 min-w-[140px]">Skills</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">Joined</th>
+                                                    <th className="py-2.5 pr-2 text-right tabular-nums whitespace-nowrap">Proj</th>
+                                                    <th className="py-2.5 pr-2 text-right tabular-nums whitespace-nowrap">Up</th>
+                                                    <th className="py-2.5 pr-2 whitespace-nowrap">Attend</th>
+                                                    <th className="py-2.5 pr-1 whitespace-nowrap">LinkedIn</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {rosterSpreadsheetRows.map((member, i) => {
+                                                    const canEditRole =
+                                                        member.status !== "pending" && member.status !== "rejected";
+                                                    const statusClass =
+                                                        member.status === "pending"
+                                                            ? "text-warning border-warning/40 bg-warning/10"
+                                                            : member.status === "rejected"
+                                                              ? "text-destructive border-destructive/40 bg-destructive/10"
+                                                              : "text-muted-foreground border-border/50 bg-background/40";
+                                                    return (
+                                                        <tr
+                                                            key={member.id}
+                                                            className={cn(
+                                                                "border-b border-border/30 text-[10px] font-mono transition-colors",
+                                                                i % 2 === 0 ? "bg-background/20" : "bg-transparent"
+                                                            )}
+                                                        >
+                                                            <td className="py-2 pr-3 pl-1 align-top">
+                                                                <span className="font-bold text-foreground uppercase tracking-tight">
+                                                                    {member.name}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2 pr-3 align-top text-muted-foreground break-all max-w-[200px]">
+                                                                {member.email || "—"}
+                                                            </td>
+                                                            <td className="py-2 pr-3 align-top whitespace-nowrap">
+                                                                <span
+                                                                    className={cn(
+                                                                        "inline-block px-2 py-0.5 border text-[9px] font-bold uppercase tracking-widest",
+                                                                        statusClass
+                                                                    )}
+                                                                >
+                                                                    {member.status}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2 pr-3 align-top whitespace-nowrap">
+                                                                {canEditRole ? (
+                                                                    <select
+                                                                        value={member.role}
+                                                                        onChange={async (e) => {
+                                                                            const newRole = e.target.value;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    role: newRole,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Role update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className="max-w-[140px] text-[9px] font-mono font-bold uppercase tracking-widest px-2 py-1.5 hud-panel-sm bg-background/80 border border-border/50 text-foreground focus:outline-none focus:border-primary/50 cursor-pointer appearance-none"
+                                                                    >
+                                                                        {ALL_ROLES.map((r) => (
+                                                                            <option key={r.value} value={r.value}>
+                                                                                {r.label}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <span className="text-primary/90 uppercase">
+                                                                        {getRoleLabel(member.role)}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td
+                                                                className="py-2 pr-3 align-top text-muted-foreground max-w-[120px] truncate"
+                                                                title={member.standoutSkill}
+                                                            >
+                                                                {member.standoutSkill}
+                                                            </td>
+                                                            <td
+                                                                className="py-2 pr-3 align-top text-muted-foreground text-[9px] leading-snug max-w-[220px]"
+                                                                title={(member.skills || []).join(", ")}
+                                                            >
+                                                                {(member.skills || []).length > 0
+                                                                    ? (member.skills || []).join(", ")
+                                                                    : "—"}
+                                                            </td>
+                                                            <td className="py-2 pr-3 align-top text-muted-foreground whitespace-nowrap">
+                                                                {member.joinDate || "—"}
+                                                            </td>
+                                                            <td className="py-2 pr-2 align-top text-right tabular-nums text-foreground">
+                                                                {member.projects}
+                                                            </td>
+                                                            <td className="py-2 pr-2 align-top text-right tabular-nums text-foreground">
+                                                                {member.uploads}
+                                                            </td>
+                                                            <td className="py-2 pr-2 align-top text-muted-foreground whitespace-nowrap">
+                                                                {member.attendance}
+                                                            </td>
+                                                            <td className="py-2 pr-1 align-top">
+                                                                {member.linkedin ? (
+                                                                    <a
+                                                                        href={member.linkedin}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-primary hover:underline text-[9px] uppercase tracking-tight truncate max-w-[100px] inline-block align-top"
+                                                                    >
+                                                                        Link
+                                                                    </a>
+                                                                ) : (
+                                                                    <span className="text-muted-foreground">—</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-                            ))}
+                            )}
                         </div>
                     )}
 

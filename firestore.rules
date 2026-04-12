@@ -10,15 +10,28 @@ service cloud.firestore {
     function userExists() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
     
     function isAdmin() {
       return isSignedIn() && userExists() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['president', 'vice-president', 'community-manager'];
+        userRole() in ['president', 'vice-president', 'community-manager'];
+    }
+
+    function isVpRole() {
+      return userExists() && userRole() in ['vp-events', 'vp-marketing', 'vp-prof-dev', 'vp-finance'];
+    }
+
+    /** Core admins or functional VPs (announcements, budgets). */
+    function canPostAnnouncement() {
+      return isSignedIn() && userExists() && (isAdmin() || isVpRole());
     }
     
     function canEditEvents() {
       return isSignedIn() && userExists() &&
-        (isAdmin() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'events');
+        (isAdmin() || userRole() == 'events' || userRole() == 'vp-events');
     }
 
     match /users/{userId} {
@@ -42,13 +55,18 @@ service cloud.firestore {
 
     match /announcements/{announcementId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if canPostAnnouncement();
+    }
+
+    match /budgets/{budgetId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if canPostAnnouncement();
     }
 
     match /events/{eventId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn(); // Allows members to RSVP
-      allow delete: if canEditEvents(); // Admin or events role
+      allow delete: if canEditEvents(); // Admin, events role, or VP Events
     }
 
     match /resources/{resourceId} {
@@ -83,6 +101,12 @@ service cloud.firestore {
     match /startups/{startupId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    /** Club-wide display settings (fiscal term label for budgets, dashboard, etc.). */
+    match /orgSettings/{docId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
     }
   }
 }

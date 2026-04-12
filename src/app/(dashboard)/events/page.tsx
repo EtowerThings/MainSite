@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { useEvents, useMembers, getAttendanceIdsForOccurrence, type EventRecurrence } from "@/hooks/useFirestore";
+import { useEvents, useMembers, useOrgSettings, getAttendanceIdsForOccurrence, type EventRecurrence } from "@/hooks/useFirestore";
+import { fiscalLabelFromOrgSettings } from "@/lib/org-fiscal";
 import {
     CalendarDays,
     Clock,
@@ -67,8 +68,14 @@ const defaultEvent = {
 };
 
 export default function EventsPage() {
-    const { profile } = useAuth();
+    const { profile, user } = useAuth();
     const { data: events, loading, createEvent, updateEvent, deleteEvent, rsvp, cancelRsvp, setEventOccurrenceAttendance } = useEvents();
+    const { data: orgSettings } = useOrgSettings(!!user?.uid);
+    const clubFiscalLabel = fiscalLabelFromOrgSettings(
+        orgSettings
+            ? { fiscalTerm: orgSettings.fiscalTerm, fiscalYearTwoDigit: orgSettings.fiscalYearTwoDigit }
+            : null
+    );
     const { data: members, loading: membersLoading } = useMembers();
     const [filter, setFilter] = useState<"all" | "upcoming" | "past">("upcoming");
     const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -214,22 +221,22 @@ export default function EventsPage() {
                     ? { interval: "weekly", count: newEvent.recurrenceWeeks }
                     : null;
 
-            await createEvent({
-                title: newEvent.title,
-                description: newEvent.description,
-                date: formattedDate,
+                await createEvent({
+                    title: newEvent.title,
+                    description: newEvent.description,
+                    date: formattedDate,
                 time: startTime && endTime ? `${startTime} – ${endTime}` : startTime || "",
                 startTime,
                 endTime,
-                location: locationStr,
-                type: newEvent.type,
-                status: "upcoming",
-                maxAttendees: newEvent.maxAttendees ? parseInt(newEvent.maxAttendees) : null,
-                tags: newEvent.tags.split(",").map((t) => t.trim()).filter(Boolean),
-                featured: newEvent.featured,
-                createdBy: profile?.uid || "",
+                    location: locationStr,
+                    type: newEvent.type,
+                    status: "upcoming",
+                    maxAttendees: newEvent.maxAttendees ? parseInt(newEvent.maxAttendees) : null,
+                    tags: newEvent.tags.split(",").map((t) => t.trim()).filter(Boolean),
+                    featured: newEvent.featured,
+                    createdBy: profile?.uid || "",
                 recurrence,
-            });
+                });
 
             setNewEvent(defaultEvent);
             setShowCreate(false);
@@ -330,9 +337,11 @@ export default function EventsPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-5 border-b border-border/50">
                 <div>
-                    <div className="flex items-center gap-2 text-[10px] font-mono text-primary/80 uppercase tracking-widest mb-1.5">
+                    <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono text-primary/80 uppercase tracking-widest mb-1.5">
                         <CalendarDays className="w-3.5 h-3.5" />
                         EVENTS
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-primary tabular-nums font-bold">FISCAL {clubFiscalLabel}</span>
                     </div>
                     <h1 className="text-2xl md:text-4xl font-black tracking-tighter uppercase">
                         OPERATIONAL <span className="gradient-text-cyber">CALENDAR</span>
