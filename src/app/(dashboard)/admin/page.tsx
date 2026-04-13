@@ -17,6 +17,8 @@ import { getEventStartMs, parseEventDate } from "@/lib/event-dates";
 import { isAdmin, canAccessAdminCenter, canManageEventAttendance } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
+import { computeHousingPointsBreakdowns, HOUSING_POINTS_RULES_TEXT } from "@/lib/housing-points";
+import { buildBirthdayRows, membersMissingBirthday } from "@/lib/admin-birthdays";
 import { BudgetAdminTab } from "@/components/budget-admin-tab";
 import { ClubFiscalAdminTab } from "@/components/club-fiscal-admin-tab";
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
@@ -48,6 +50,9 @@ import {
     CalendarClock,
     LayoutGrid,
     ArrowLeft,
+    Home,
+    Info,
+    Cake,
 } from "lucide-react";
 
 function formatOccurrenceDisplay(isoYmd: string): string {
@@ -92,7 +97,9 @@ type AdminTab =
     | "profiles"
     | "eventAttendance"
     | "skillsExport"
-    | "clubFiscal";
+    | "clubFiscal"
+    | "housingPoints"
+    | "birthdays";
 
 function adminTabAllowed(
     tab: AdminTab,
@@ -102,6 +109,8 @@ function adminTabAllowed(
 ): boolean {
     if (tab === "announcements" || tab === "budgets") return canAccessAdminCenter(role);
     if (tab === "clubFiscal") return core;
+    if (tab === "housingPoints") return core;
+    if (tab === "birthdays") return core;
     if (tab === "eventAttendance") return attendance;
     return core;
 }
@@ -361,6 +370,20 @@ export default function AdminPage() {
         URL.revokeObjectURL(a.href);
     };
 
+    const housingRows = useMemo(
+        () => (userIsCoreAdmin ? computeHousingPointsBreakdowns(members, events) : []),
+        [userIsCoreAdmin, members, events]
+    );
+
+    const birthdayRows = useMemo(
+        () => (userIsCoreAdmin ? buildBirthdayRows(members) : []),
+        [userIsCoreAdmin, members]
+    );
+    const missingBirthdayMembers = useMemo(
+        () => (userIsCoreAdmin ? membersMissingBirthday(members) : []),
+        [userIsCoreAdmin, members]
+    );
+
     useEffect(() => {
         if (!userHasExecAccess) return;
         if (activeTab === null) return;
@@ -368,6 +391,13 @@ export default function AdminPage() {
             setActiveTab(null);
         }
     }, [userHasExecAccess, profile?.role, activeTab, userIsCoreAdmin, userCanManageAttendance]);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || !userHasExecAccess || !userIsCoreAdmin) return;
+        const tab = new URLSearchParams(window.location.search).get("tab");
+        if (tab === "housing") setActiveTab("housingPoints");
+        if (tab === "birthdays") setActiveTab("birthdays");
+    }, [userHasExecAccess, userIsCoreAdmin]);
 
     const allTabDefs: { key: AdminTab; label: string; icon: React.ReactNode; count?: number }[] = [
         { key: "announcements", label: "BROADCASTS", icon: <Megaphone className="w-4 h-4" /> },
@@ -380,6 +410,8 @@ export default function AdminPage() {
         { key: "pitches", label: "PROPOSALS", icon: <FileText className="w-4 h-4" />, count: pendingPitches.length },
         { key: "resources", label: "DATA LOGS", icon: <BookOpen className="w-4 h-4" />, count: pendingResources.length },
         { key: "profiles", label: "ROSTER", icon: <Users className="w-4 h-4" />, count: members.length },
+        { key: "housingPoints", label: "HOUSING PTS", icon: <Home className="w-4 h-4" /> },
+        { key: "birthdays", label: "BIRTHDAYS", icon: <Cake className="w-4 h-4" />, count: birthdayRows.length },
         { key: "eventAttendance", label: "ATTENDANCE", icon: <ClipboardCheck className="w-4 h-4" /> },
         { key: "skillsExport", label: "SKILLS EXPORT", icon: <List className="w-4 h-4" /> },
     ];
@@ -1363,6 +1395,230 @@ export default function AdminPage() {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === "housingPoints" && (
+                        <div className="space-y-6">
+                            <div className="hud-panel bg-card/60 border border-primary/40 p-5 sm:p-6 scanlines relative">
+                                <div className="flex items-start gap-3 relative z-10">
+                                    <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                                    <div>
+                                        <h3 className="text-sm font-bold uppercase tracking-tight text-primary mb-2">
+                                            Housing points (admin only)
+                                        </h3>
+                                        <ul className="text-sm text-muted-foreground space-y-2 list-disc pl-4 leading-relaxed">
+                                            {HOUSING_POINTS_RULES_TEXT.map((line) => (
+                                                <li key={line}>{line}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="hud-panel bg-card/40 border border-border/40 overflow-hidden">
+                                <div className="overflow-x-auto custom-scroll">
+                                    <table className="w-full text-left border-collapse min-w-[720px]">
+                                        <thead>
+                                            <tr className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground border-b border-border/50 bg-card/80">
+                                                <th className="py-3 px-3">Member</th>
+                                                <th className="py-3 px-2">Role</th>
+                                                <th className="py-3 px-2 text-right tabular-nums">Sessions</th>
+                                                <th className="py-3 px-2 text-right tabular-nums">Host (+4 each)</th>
+                                                <th className="py-3 px-2 text-right tabular-nums">Leadership</th>
+                                                <th className="py-3 px-2 text-right tabular-nums">Residency</th>
+                                                <th className="py-3 px-3 text-right tabular-nums">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {housingRows.map((r, i) => (
+                                                <tr
+                                                    key={r.memberId}
+                                                    className={cn(
+                                                        "border-b border-border/30 text-sm",
+                                                        i % 2 === 0 ? "bg-background/20" : "bg-transparent"
+                                                    )}
+                                                >
+                                                    <td className="py-2.5 px-3">
+                                                        <div className="font-semibold text-foreground">{r.name}</div>
+                                                        <div className="text-xs text-muted-foreground truncate max-w-[220px]">
+                                                            {r.email}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-2.5 px-2 text-xs text-muted-foreground whitespace-nowrap">
+                                                        {getRoleLabel(r.role)}
+                                                    </td>
+                                                    <td className="py-2.5 px-2 text-right tabular-nums font-mono text-xs">
+                                                        {r.attendanceSessionPoints > 0 ? "+" : ""}
+                                                        {r.attendanceSessionPoints}
+                                                    </td>
+                                                    <td className="py-2.5 px-2 text-right tabular-nums font-mono text-xs">
+                                                        {r.hostEventBonus > 0 ? `+${r.hostEventBonus}` : r.hostEventBonus}
+                                                    </td>
+                                                    <td className="py-2.5 px-2 text-right tabular-nums font-mono text-xs">
+                                                        {r.leadershipBonus > 0 ? `+${r.leadershipBonus}` : r.leadershipBonus}
+                                                    </td>
+                                                    <td className="py-2.5 px-2 text-right tabular-nums font-mono text-xs">
+                                                        {r.residencyBonus > 0 ? `+${r.residencyBonus}` : r.residencyBonus}
+                                                    </td>
+                                                    <td
+                                                        className={cn(
+                                                            "py-2.5 px-3 text-right font-mono font-bold tabular-nums",
+                                                            r.total >= 0 ? "text-primary" : "text-destructive"
+                                                        )}
+                                                    >
+                                                        {r.total > 0 ? "+" : ""}
+                                                        {r.total}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {housingRows.length === 0 && (
+                                    <p className="text-sm text-muted-foreground p-6 text-center">No members to show.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === "birthdays" && (
+                        <div className="space-y-6">
+                            <div className="hud-panel bg-card/60 border border-primary/40 p-5 sm:p-6 scanlines relative">
+                                <div className="flex items-start gap-3 relative z-10">
+                                    <Cake className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                                    <div>
+                                        <h3 className="text-sm font-bold uppercase tracking-tight text-primary mb-1">
+                                            Member birthdays
+                                        </h3>
+                                        <p className="text-sm text-muted-foreground leading-relaxed">
+                                            Dates come from onboarding. Only core admins see this list. Upcoming birthdays
+                                            are sorted soonest first.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="hud-panel bg-card/40 border border-border/40 overflow-hidden">
+                                <div className="px-4 py-3 border-b border-border/40 bg-card/60">
+                                    <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-primary">
+                                        With birthday ({birthdayRows.length})
+                                    </h4>
+                                </div>
+                                <div className="overflow-x-auto custom-scroll">
+                                    <table className="w-full text-left border-collapse min-w-[800px]">
+                                        <thead>
+                                            <tr className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground border-b border-border/50 bg-card/80">
+                                                <th className="py-3 px-3">Member</th>
+                                                <th className="py-3 px-2">Role</th>
+                                                <th className="py-3 px-2">Status</th>
+                                                <th className="py-3 px-2 whitespace-nowrap">Date of birth</th>
+                                                <th className="py-3 px-2 text-right tabular-nums">Age</th>
+                                                <th className="py-3 px-2 whitespace-nowrap">Next birthday</th>
+                                                <th className="py-3 px-3 whitespace-nowrap">In</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {birthdayRows.map((row, i) => {
+                                                const m = row.member;
+                                                const inLabel =
+                                                    row.daysUntil === 0
+                                                        ? "Today"
+                                                        : row.daysUntil === 1
+                                                          ? "Tomorrow"
+                                                          : `${row.daysUntil} days`;
+                                                return (
+                                                    <tr
+                                                        key={m.id}
+                                                        className={cn(
+                                                            "border-b border-border/30 text-sm",
+                                                            i % 2 === 0 ? "bg-background/20" : "bg-transparent"
+                                                        )}
+                                                    >
+                                                        <td className="py-2.5 px-3">
+                                                            <div className="font-semibold text-foreground">{m.name}</div>
+                                                            <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                                                {m.email}
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-xs text-muted-foreground whitespace-nowrap">
+                                                            {getRoleLabel(m.role)}
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-[10px] font-mono uppercase text-muted-foreground">
+                                                            {m.status}
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-xs whitespace-nowrap">
+                                                            {row.displayBirth}
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-right tabular-nums font-mono text-xs">
+                                                            {row.age != null ? row.age : "—"}
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-xs whitespace-nowrap text-foreground">
+                                                            {row.nextBirthday.toLocaleDateString("en-US", {
+                                                                month: "short",
+                                                                day: "numeric",
+                                                                year: "numeric",
+                                                            })}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-xs font-mono text-primary whitespace-nowrap">
+                                                            {inLabel}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {birthdayRows.length === 0 && (
+                                    <p className="text-sm text-muted-foreground p-6 text-center">
+                                        No birthdays on file yet. Members add this during onboarding.
+                                    </p>
+                                )}
+                            </div>
+
+                            {missingBirthdayMembers.length > 0 && (
+                                <div className="hud-panel bg-card/40 border border-border/40 overflow-hidden">
+                                    <div className="px-4 py-3 border-b border-border/40 bg-card/60">
+                                        <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                                            No birthday on file ({missingBirthdayMembers.length})
+                                        </h4>
+                                    </div>
+                                    <div className="overflow-x-auto custom-scroll">
+                                        <table className="w-full text-left border-collapse min-w-[520px]">
+                                            <thead>
+                                                <tr className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground border-b border-border/50 bg-card/80">
+                                                    <th className="py-3 px-3">Member</th>
+                                                    <th className="py-3 px-2">Role</th>
+                                                    <th className="py-3 px-2">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {missingBirthdayMembers.map((m, i) => (
+                                                    <tr
+                                                        key={m.id}
+                                                        className={cn(
+                                                            "border-b border-border/30 text-sm",
+                                                            i % 2 === 0 ? "bg-background/20" : "bg-transparent"
+                                                        )}
+                                                    >
+                                                        <td className="py-2.5 px-3">
+                                                            <div className="font-semibold text-foreground">{m.name}</div>
+                                                            <div className="text-xs text-muted-foreground truncate max-w-[220px]">
+                                                                {m.email}
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-xs text-muted-foreground whitespace-nowrap">
+                                                            {getRoleLabel(m.role)}
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-[10px] font-mono uppercase text-muted-foreground">
+                                                            {m.status}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

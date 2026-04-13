@@ -68,7 +68,7 @@ export default function AlumniNetworkPage() {
             {loading && (
                 <div className="flex flex-col items-center justify-center py-32 gap-4">
                     <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    <span className="text-xs font-mono text-primary font-bold uppercase tracking-widest animate-pulse">SYNCING ALUMNI DATA...</span>
+                    <span className="text-xs font-mono text-primary font-bold uppercase tracking-widest animate-pulse">Loading alumni…</span>
                 </div>
             )}
 

@@ -209,10 +209,10 @@ export default function ResourcesPage() {
                             <div>
                                 <div className="flex items-center gap-2 mb-1">
                                     <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                                    <span className="text-[10px] font-mono text-primary uppercase tracking-widest">SECURE UPLINK ESTABLISHED</span>
+                                    <span className="text-[10px] font-mono text-primary uppercase tracking-widest">Share a resource</span>
                                 </div>
                                 <h3 className="font-black text-xl uppercase tracking-tight flex items-center gap-2">
-                                    <Upload className="w-5 h-5 text-primary" /> TRANSMIT DATA
+                                    <Upload className="w-5 h-5 text-primary" /> Upload to the library
                                 </h3>
                             </div>
                             <button onClick={() => setShowUploadModal(false)} className="p-2 hud-panel-sm border border-border/50 hover:border-primary/50 text-muted-foreground hover:text-primary transition-colors bg-background/50"><X className="w-4 h-4" /></button>
@@ -221,32 +221,32 @@ export default function ResourcesPage() {
                         <div className="space-y-5 relative z-10">
                             <div className="p-4 hud-corners bg-background/40 border border-border/50 space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">FILE DESIGNATION <span className="text-primary">*</span></label>
-                                    <input type="text" value={newResource.title} onChange={(e) => setNewResource({ ...newResource, title: e.target.value })} placeholder="e.g. REACT COMBAT MANUAL" className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono uppercase transition-colors focus:outline-none" />
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">Title <span className="text-primary">*</span></label>
+                                    <input type="text" value={newResource.title} onChange={(e) => setNewResource({ ...newResource, title: e.target.value })} placeholder="e.g. Intro to React" className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none" />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">CONTENTS / ABSTRACT</label>
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">Description</label>
                                     <textarea rows={3} value={newResource.description} onChange={(e) => setNewResource({ ...newResource, description: e.target.value })} placeholder="Enter file summary..." className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none resize-none" />
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="p-4 hud-corners bg-background/40 border border-border/50">
-                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">SKILL TIER</label>
-                                    <select value={newResource.phase} onChange={(e) => setNewResource({ ...newResource, phase: e.target.value })} className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono uppercase transition-colors focus:outline-none">
-                                        <option value="beginner">LVL 1 - BEGINNER</option>
-                                        <option value="intermediate">LVL 2 - INTERMEDIATE</option>
-                                        <option value="advanced">LVL 3 - ADVANCED</option>
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">Difficulty</label>
+                                    <select value={newResource.phase} onChange={(e) => setNewResource({ ...newResource, phase: e.target.value })} className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none">
+                                        <option value="beginner">Beginner</option>
+                                        <option value="intermediate">Intermediate</option>
+                                        <option value="advanced">Advanced</option>
                                     </select>
                                 </div>
                                 <div className="p-4 hud-corners bg-background/40 border border-border/50">
-                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">DATA TYPE</label>
-                                    <select value={newResource.type} onChange={(e) => setNewResource({ ...newResource, type: e.target.value })} className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono uppercase transition-colors focus:outline-none">
-                                        <option value="guide">TEXT GUIDE</option>
-                                        <option value="tutorial">TUTORIAL</option>
-                                        <option value="video">VIDEO FEED</option>
-                                        <option value="document">DOC FILE</option>
-                                        <option value="link">EXTERNAL LINK</option>
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">Type</label>
+                                    <select value={newResource.type} onChange={(e) => setNewResource({ ...newResource, type: e.target.value })} className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none">
+                                        <option value="guide">Guide</option>
+                                        <option value="tutorial">Tutorial</option>
+                                        <option value="video">Video</option>
+                                        <option value="document">Document</option>
+                                        <option value="link">External link</option>
                                     </select>
                                 </div>
                             </div>
@@ -263,7 +263,7 @@ export default function ResourcesPage() {
                                 disabled={!newResource.title.trim()}
                                 className="w-full mt-2 py-3.5 hud-panel bg-primary text-primary-foreground text-xs font-mono font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                <Upload className="w-4 h-4" /> INITIATE UPLOAD SEQUENCE
+                                <Upload className="w-4 h-4" /> Submit for review
                             </button>
                         </div>
                     </div>

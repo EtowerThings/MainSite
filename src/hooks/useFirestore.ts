@@ -231,6 +231,8 @@ export interface EventItem {
     tags: string[];
     featured: boolean;
     createdBy: string;
+    /** Set by admin / VP Events for housing host bonus (+4) and host no-show (−3). */
+    housingHostUid: string | null;
     createdAt: string;
     /** When set, UI expands to one row per weekly occurrence (single Firestore doc). */
     recurrence: EventRecurrence | null;
@@ -270,6 +272,10 @@ export function useEvents(enabled: boolean = true) {
             tags: raw.tags || [],
             featured: raw.featured || false,
             createdBy: raw.createdBy || "",
+            housingHostUid:
+                typeof raw.housingHostUid === "string" && raw.housingHostUid.trim()
+                    ? raw.housingHostUid.trim()
+                    : null,
             createdAt: formatTimestamp(raw.createdAt),
             recurrence:
                 raw.recurrence?.interval === "weekly" && typeof raw.recurrence?.count === "number"
@@ -280,7 +286,13 @@ export function useEvents(enabled: boolean = true) {
         enabled
     );
 
-    const createEvent = async (event: Omit<EventItem, "id" | "createdAt" | "attendees" | "attendance" | "attendanceByDate"> & { startTime?: string; endTime?: string }) => {
+    const createEvent = async (
+        event: Omit<EventItem, "id" | "createdAt" | "attendees" | "attendance" | "attendanceByDate" | "housingHostUid"> & {
+            startTime?: string;
+            endTime?: string;
+            housingHostUid?: string | null;
+        }
+    ) => {
         const startTime = (event as { startTime?: string }).startTime ?? "";
         const endTime = (event as { endTime?: string }).endTime ?? "";
         const rec = event.recurrence;
@@ -300,6 +312,10 @@ export function useEvents(enabled: boolean = true) {
             tags: event.tags ?? [],
             featured: event.featured ?? false,
             createdBy: event.createdBy ?? "",
+            housingHostUid:
+                event.housingHostUid && String(event.housingHostUid).trim()
+                    ? String(event.housingHostUid).trim()
+                    : null,
             attendees: [],
             attendance: [],
             attendanceByDate: {},
@@ -331,7 +347,23 @@ export function useEvents(enabled: boolean = true) {
     /** Update event fields (for admin/events role). */
     const updateEvent = async (
         eventId: string,
-        updates: Partial<Pick<EventItem, "title" | "description" | "date" | "time" | "location" | "type" | "status" | "maxAttendees" | "tags" | "featured" | "recurrence">> & {
+        updates: Partial<
+            Pick<
+                EventItem,
+                | "title"
+                | "description"
+                | "date"
+                | "time"
+                | "location"
+                | "type"
+                | "status"
+                | "maxAttendees"
+                | "tags"
+                | "featured"
+                | "recurrence"
+                | "housingHostUid"
+            >
+        > & {
             startTime?: string;
             endTime?: string;
         }
@@ -351,6 +383,10 @@ export function useEvents(enabled: boolean = true) {
         if (updates.maxAttendees !== undefined) payload.maxAttendees = updates.maxAttendees;
         if (updates.tags !== undefined) payload.tags = updates.tags;
         if (updates.featured !== undefined) payload.featured = updates.featured;
+        if (updates.housingHostUid !== undefined) {
+            const h = updates.housingHostUid;
+            payload.housingHostUid = h && String(h).trim() ? String(h).trim() : null;
+        }
         if (updates.recurrence !== undefined) {
             payload.recurrence =
                 updates.recurrence && updates.recurrence.interval === "weekly" && updates.recurrence.count >= 2
@@ -387,6 +423,8 @@ export interface MemberItem {
     bio: string | null;
     skills: string[];
     openToMentorship: boolean;
+    /** `YYYY-MM-DD` from onboarding, or null. */
+    birthday: string | null;
 }
 
 export function useMembers(enabled: boolean = true) {
@@ -401,8 +439,10 @@ export function useMembers(enabled: boolean = true) {
             status: raw.status || (raw.onboarded ? "approved" : "pending"),
             photoURL: raw.photoURL || null,
             standoutSkill: raw.standoutSkill || "—",
-            projects: raw.engagementMetrics?.projectsCompleted || raw.projects?.length || 0,
-            uploads: raw.engagementMetrics?.uploadsCount || 0,
+            projects:
+                raw.engagementMetrics?.projectsCompleted ??
+                (Array.isArray(raw.projects) ? raw.projects.length : 0),
+            uploads: raw.engagementMetrics?.uploadsCount ?? 0,
             attendance: raw.engagementMetrics?.attendanceRate
                 ? `${raw.engagementMetrics.attendanceRate}%`
                 : "—",
@@ -411,6 +451,12 @@ export function useMembers(enabled: boolean = true) {
             bio: raw.bio || null,
             skills: raw.skills || [],
             openToMentorship: raw.openToMentorship || false,
+            birthday: (() => {
+                const b = raw.birthday;
+                if (typeof b === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.trim())) return b.trim();
+                if (b instanceof Timestamp) return rawDateToYyyyMmDd(b);
+                return null;
+            })(),
         }),
         enabled
     );
@@ -430,6 +476,8 @@ export interface ResourceItem {
     topics: string[];
     views: number;
     uploadedBy: string;
+    /** When set (client uploads), preferred for attributing resources to a user. */
+    uploadedById: string | null;
     date: string;
     fileUrl: string | null;
     approved: boolean;
@@ -449,6 +497,7 @@ export function useResources(onlyApproved = true, enabled = true) {
             topics: raw.topics || [],
             views: raw.views || 0,
             uploadedBy: raw.uploadedBy || "",
+            uploadedById: typeof raw.uploadedById === "string" ? raw.uploadedById : null,
             date: formatTimestamp(raw.createdAt),
             fileUrl: raw.fileUrl || null,
             approved: raw.approved ?? false,

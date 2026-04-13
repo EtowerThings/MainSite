@@ -78,7 +78,7 @@ export default function FeedPage() {
             {loading && (
                 <div className="flex-1 flex flex-col items-center justify-center py-20 gap-4">
                     <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    <span className="text-xs font-mono text-primary uppercase tracking-widest animate-pulse">SYNCING ACTIVITY DATA...</span>
+                    <span className="text-xs font-mono text-primary uppercase tracking-widest animate-pulse">Loading activity…</span>
                 </div>
             )}
 

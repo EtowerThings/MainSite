@@ -65,6 +65,8 @@ const defaultEvent = {
     isVirtual: false,
     isRecurring: false,
     recurrenceWeeks: 4,
+    /** Housing host uid (set by admin / VP Events); empty = none. */
+    housingHostUid: "",
 };
 
 export default function EventsPage() {
@@ -148,12 +150,20 @@ export default function EventsPage() {
             isVirtual: !!isVirtual,
             isRecurring: !!(rec && rec.interval === "weekly" && rec.count > 1),
             recurrenceWeeks: rec?.count ?? 4,
+            housingHostUid: event.housingHostUid ?? "",
         });
         setEditStatus(event.status || "upcoming");
         setEditingEvent(events.find((e) => e.id === event.id) ?? event);
     };
 
     const nonAlumniMembers = useMemo(() => members.filter((m) => m.role !== "alumni"), [members]);
+    const hostPickerMembers = useMemo(
+        () =>
+            [...members]
+                .filter((m) => m.status !== "pending" && m.status !== "rejected")
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+        [members]
+    );
     const attendanceFilteredMembers = useMemo(() => {
         if (!attendanceSearch.trim()) return nonAlumniMembers;
         const q = attendanceSearch.toLowerCase().trim();
@@ -235,6 +245,7 @@ export default function EventsPage() {
                     tags: newEvent.tags.split(",").map((t) => t.trim()).filter(Boolean),
                     featured: newEvent.featured,
                     createdBy: profile?.uid || "",
+                    housingHostUid: newEvent.housingHostUid?.trim() || null,
                 recurrence,
                 });
 
@@ -305,6 +316,7 @@ export default function EventsPage() {
                 tags: editForm.tags.split(",").map((t) => t.trim()).filter(Boolean),
                 featured: editForm.featured,
                 recurrence,
+                housingHostUid: editForm.housingHostUid?.trim() || null,
             });
             setEditingEvent(null);
         } catch (err) {
@@ -701,6 +713,30 @@ export default function EventsPage() {
                                 </div>
                             </div>
 
+                            {userCanEditEvents && (
+                                <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                        <Users className="w-3.5 h-3.5" /> EVENT HOST (HOUSING)
+                                    </label>
+                                    <select
+                                        value={newEvent.housingHostUid}
+                                        onChange={(e) => update("housingHostUid", e.target.value)}
+                                        disabled={membersLoading}
+                                        className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none disabled:opacity-50"
+                                    >
+                                        <option value="">No host assigned</option>
+                                        {hostPickerMembers.map((m) => (
+                                            <option key={m.id} value={m.id}>
+                                                {m.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[9px] font-mono text-muted-foreground mt-2 leading-relaxed">
+                                        Used for housing points: +4 when set, −3 if the host is absent on attendance.
+                                    </p>
+                                </div>
+                            )}
+
                             {/* Location / Virtual Toggle */}
                             <div className="p-4 hud-corners bg-background/40 border border-border/50">
                                 <div className="flex items-center justify-between mb-2">
@@ -876,6 +912,29 @@ export default function EventsPage() {
                                 <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">MAX CAPACITY</label>
                                 <input type="number" min="1" value={editForm.maxAttendees} onChange={(e) => updateEditForm("maxAttendees", e.target.value)} placeholder="Unlimited" className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none" />
                             </div>
+                            {userCanEditEvents && (
+                                <div className="p-4 hud-corners bg-background/40 border border-border/50">
+                                    <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                        <Users className="w-3.5 h-3.5" /> EVENT HOST (HOUSING)
+                                    </label>
+                                    <select
+                                        value={editForm.housingHostUid}
+                                        onChange={(e) => updateEditForm("housingHostUid", e.target.value)}
+                                        disabled={membersLoading}
+                                        className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none disabled:opacity-50"
+                                    >
+                                        <option value="">No host assigned</option>
+                                        {hostPickerMembers.map((m) => (
+                                            <option key={m.id} value={m.id}>
+                                                {m.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[9px] font-mono text-muted-foreground mt-2 leading-relaxed">
+                                        +4 housing points per event when assigned; −3 if host is absent on a saved roll.
+                                    </p>
+                                </div>
+                            )}
                             <div className="p-4 hud-corners bg-background/40 border border-border/50">
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">LOCATION</label>

@@ -45,7 +45,7 @@ export function PublicNav() {
                         STARTUPS
                     </Link>
                     <Link href="/hall-of-fame" className="text-[10px] sm:text-xs font-mono font-bold text-muted-foreground hover:text-primary uppercase tracking-widest transition-colors hidden sm:block">
-                        HALL_OF_FAME
+                        Hall of fame
                     </Link>
                     <Link href="/faq" className="text-[10px] sm:text-xs font-mono font-bold text-muted-foreground hover:text-primary uppercase tracking-widest transition-colors hidden sm:block">
                         FAQ
@@ -85,7 +85,7 @@ export function PublicNav() {
                                     <div className="absolute right-0 top-full mt-2 w-56 hud-panel-sm bg-card/95 backdrop-blur-md border border-primary/40 shadow-[0_0_20px_rgba(0,0,0,0.5)] z-50 overflow-hidden scanlines">
                                         <div className="relative z-10 p-2 space-y-1">
                                             <div className="px-3 py-2 border-b border-border/50 mb-2">
-                                                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">ACTIVE CONNECTION</p>
+                                                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Signed in as</p>
                                                 <p className="text-xs font-mono font-bold text-foreground truncate">{profile?.email}</p>
                                             </div>
                                             <Link
@@ -94,14 +94,14 @@ export function PublicNav() {
                                                 className="flex items-center gap-3 px-3 py-2 hud-panel-sm hover:bg-primary/10 hover:text-primary transition-colors text-xs font-mono font-bold uppercase tracking-widest"
                                             >
                                                 <LayoutDashboard className="w-4 h-4 text-primary" />
-                                                COMMAND CENTER
+                                                Dashboard
                                             </Link>
                                             <button
                                                 onClick={async () => { await signOut(); setShowDropdown(false); }}
                                                 className="w-full flex items-center gap-3 px-3 py-2 hud-panel-sm hover:bg-destructive/10 hover:text-destructive transition-colors text-destructive text-xs font-mono font-bold uppercase tracking-widest"
                                             >
                                                 <LogOut className="w-4 h-4" />
-                                                TERMINATE SYNC
+                                                Sign out
                                             </button>
                                         </div>
                                     </div>
@@ -113,7 +113,7 @@ export function PublicNav() {
                             href="/login"
                             className="hud-panel-sm bg-primary text-primary-foreground px-5 sm:px-6 py-2 sm:py-2.5 text-[10px] sm:text-xs font-mono font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border"
                         >
-                            INITIATE SYNC
+                            Sign in
                         </Link>
                     )}
                 </div>

@@ -1,11 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { isAdmin, isPresident } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES, ADMIN_ROLES, LEADERSHIP_ROLES } from "@/lib/roles";
 import type { UserRole } from "@/contexts/auth-context";
-import { useMembers, useEvents, countMemberAttendanceOccurrences, type MemberItem } from "@/hooks/useFirestore";
+import {
+    useMembers,
+    useEvents,
+    useProjects,
+    useResources,
+    countMemberAttendanceOccurrences,
+    type MemberItem,
+} from "@/hooks/useFirestore";
+import { countMemberProjects, countMemberUploads } from "@/lib/member-engagement";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
@@ -46,6 +54,8 @@ export default function MembersPage() {
     const { profile } = useAuth();
     const { data: members, loading } = useMembers();
     const { data: events } = useEvents();
+    const { data: allProjects } = useProjects();
+    const { data: allResources } = useResources(false);
     const [search, setSearch] = useState("");
 
     /** Distinct event sessions (including each recurring occurrence) marked present. */
@@ -69,6 +79,17 @@ export default function MembersPage() {
         associates: members.filter((m) => m.role === "associate").length,
         alumni: members.filter((m) => m.role === "alumni").length,
     };
+
+    const rosterEngagement = useMemo(() => {
+        const m = new Map<string, { projects: number; uploads: number }>();
+        for (const member of members) {
+            m.set(member.id, {
+                projects: countMemberProjects(allProjects, member.id),
+                uploads: countMemberUploads(allResources, member.id, member.name),
+            });
+        }
+        return m;
+    }, [members, allProjects, allResources]);
 
     return (
         <div className="flex flex-col min-h-[calc(100vh-4rem)] animate-fade-in space-y-6 relative z-10">
@@ -147,6 +168,7 @@ export default function MembersPage() {
                     {filtered.map((member, i) => {
                         const rc = roleConfig[member.role] || roleConfig.resident;
                         const isHighCommand = LEADERSHIP_ROLES.includes(member.role as UserRole);
+                        const eng = rosterEngagement.get(member.id);
 
                         return (
                             <div
@@ -190,11 +212,11 @@ export default function MembersPage() {
 
                                 <div className="grid grid-cols-3 gap-2 relative z-10">
                                     <div className="hud-panel-sm bg-background/60 border border-border/40 py-2.5 px-1 text-center group-hover:border-primary/30 transition-colors">
-                                        <div className="text-sm font-black text-primary font-mono">{member.projects}</div>
+                                        <div className="text-sm font-black text-primary font-mono">{eng?.projects ?? 0}</div>
                                         <div className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">PROJECTS</div>
                                     </div>
                                     <div className="hud-panel-sm bg-background/60 border border-border/40 py-2.5 px-1 text-center group-hover:border-primary/30 transition-colors">
-                                        <div className="text-sm font-black text-chart-2 font-mono">{member.uploads}</div>
+                                        <div className="text-sm font-black text-chart-2 font-mono">{eng?.uploads ?? 0}</div>
                                         <div className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">UPLOADS</div>
                                     </div>
                                     <div className="hud-panel-sm bg-background/60 border border-border/40 py-2.5 px-1 text-center group-hover:border-primary/30 transition-colors">
@@ -225,7 +247,7 @@ export default function MembersPage() {
                         <div className="flex items-center justify-between p-4 border-b border-primary/30 bg-primary/5">
                             <div className="flex items-center gap-2 text-primary font-mono tracking-widest text-xs uppercase font-bold">
                                 <Terminal className="w-4 h-4" />
-                                TARGET_DOSSIER: {selectedMember.id.slice(0, 8)}
+                                Member profile
                             </div>
                             <button
                                 onClick={() => setSelectedMember(null)}
@@ -333,11 +355,15 @@ export default function MembersPage() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="hud-panel-sm bg-background/60 border border-border/40 p-3 text-center">
-                                            <div className="text-xl font-black text-primary font-mono">{selectedMember.projects}</div>
+                                            <div className="text-xl font-black text-primary font-mono">
+                                                {countMemberProjects(allProjects, selectedMember.id)}
+                                            </div>
                                             <div className="text-[9px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">PROJECTS</div>
                                         </div>
                                         <div className="hud-panel-sm bg-background/60 border border-border/40 p-3 text-center">
-                                            <div className="text-xl font-black text-chart-2 font-mono">{selectedMember.uploads}</div>
+                                            <div className="text-xl font-black text-chart-2 font-mono">
+                                                {countMemberUploads(allResources, selectedMember.id, selectedMember.name)}
+                                            </div>
                                             <div className="text-[9px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1">UPLOADS</div>
                                         </div>
                                         <div className="hud-panel-sm bg-background/60 border border-border/40 p-3 text-center col-span-2">
