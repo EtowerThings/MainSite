@@ -29,6 +29,7 @@ import {
     parseOrgSettingsRaw,
     type OrgSettingsData,
 } from "@/lib/org-fiscal";
+import { parseClubRole, parseResidency, type ResidencyType } from "@/lib/member-residency";
 
 // ──────────────────────────────────────
 // Generic real-time collection hook
@@ -412,6 +413,7 @@ export interface MemberItem {
     name: string;
     email: string;
     role: string;
+    residency: ResidencyType;
     status: string;
     photoURL: string | null;
     standoutSkill: string;
@@ -431,11 +433,14 @@ export function useMembers(enabled: boolean = true) {
     const result = useCollection<MemberItem>(
         "users",
         [orderBy("createdAt", "desc")],
-        (raw, id) => ({
+        (raw, id) => {
+            const rec = raw as Record<string, unknown>;
+            return {
             id,
             name: raw.displayName || "Unknown",
             email: raw.email || "",
-            role: raw.role || "member",
+            role: parseClubRole(rec),
+            residency: parseResidency(rec),
             status: raw.status || (raw.onboarded ? "approved" : "pending"),
             photoURL: raw.photoURL || null,
             standoutSkill: raw.standoutSkill || "—",
@@ -457,7 +462,8 @@ export function useMembers(enabled: boolean = true) {
                 if (b instanceof Timestamp) return rawDateToYyyyMmDd(b);
                 return null;
             })(),
-        }),
+        };
+        },
         enabled
     );
     return { ...result, data: result.data.filter((m) => m.status !== "removed") };

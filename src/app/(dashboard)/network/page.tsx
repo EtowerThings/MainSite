@@ -23,7 +23,7 @@ export default function AlumniNetworkPage() {
     const [search, setSearch] = useState("");
 
     // Only fetch alumni explicitly.
-    const alumniMembers = members.filter(m => m.role === "alumni");
+    const alumniMembers = members.filter((m) => m.role === "alumni" || m.residency === "alumni");
 
     const filteredAlumni = alumniMembers.filter(m =>
         m.name.toLowerCase().includes(search.toLowerCase()) ||

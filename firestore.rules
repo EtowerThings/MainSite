@@ -21,7 +21,7 @@ service cloud.firestore {
     }
 
     function isVpRole() {
-      return userExists() && userRole() in ['vp-events', 'vp-marketing', 'vp-prof-dev', 'vp-finance'];
+      return userExists() && userRole() in ['vp-events', 'vp-marketing', 'vp-prof-dev', 'vp-finance', 'vp-recruitment'];
     }
 
     /** Core admins or functional VPs (announcements, budgets). */

@@ -27,6 +27,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SKILL_CATEGORIES } from "@/lib/skills";
 import { getRoleLabel } from "@/lib/roles";
+import { getResidencyLabel } from "@/lib/member-residency";
 import { useProjects, useResources, useEvents, countMemberAttendanceOccurrences } from "@/hooks/useFirestore";
 import { countMemberProjects, countMemberUploads, countMemberPitchProposals } from "@/lib/member-engagement";
 
@@ -43,7 +44,7 @@ export default function ProfilePage() {
     const [linkedin, setLinkedin] = useState(profile?.linkedin || "");
     const [openToMentorship, setOpenToMentorship] = useState(profile?.openToMentorship || false);
 
-    const isAlumni = profile?.role === "alumni";
+    const isAlumni = profile?.role === "alumni" || profile?.residency === "alumni";
 
     useEffect(() => {
         if (profile) {
@@ -200,7 +201,10 @@ export default function ProfilePage() {
                         </span>
                         <span className="text-[10px] items-center gap-1.5 font-mono font-bold px-3 py-1 border hud-panel-sm bg-primary border-primary text-primary-foreground uppercase tracking-widest shadow-[0_0_10px_rgba(203,247,2,0.3)]">
                             <Shield className="w-3 h-3 inline mr-1" />
-                            {getRoleLabel(profile?.role ?? "resident")}
+                            {getRoleLabel(profile?.role ?? "member")}
+                        </span>
+                        <span className="text-[10px] font-mono font-bold px-3 py-1 border hud-panel-sm border-border/60 text-muted-foreground uppercase tracking-widest">
+                            {getResidencyLabel(profile?.residency ?? "resident")}
                         </span>
                     </div>
 

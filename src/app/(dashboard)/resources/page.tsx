@@ -61,7 +61,7 @@ export default function ResourcesPage() {
                         <span className="absolute -top-1 -right-4 text-[10px] text-primary/50 font-mono hidden md:inline animate-pulse">v2.0</span>
                     </h1>
                 </div>
-                {profile?.role !== "alumni" && (
+                {profile?.role !== "alumni" && profile?.residency !== "alumni" && (
                     <button
                         onClick={() => setShowUploadModal(true)}
                         className="hud-panel-sm bg-primary text-primary-foreground px-5 py-2.5 text-xs font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border-strong flex items-center gap-2 group"

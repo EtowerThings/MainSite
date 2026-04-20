@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { canAccessAdminCenter } from "@/lib/roles";
+import { canAccessAdminCenter, getRoleLabel } from "@/lib/roles";
+import { getResidencyLabel } from "@/lib/member-residency";
 import { useFeed, useProjects, useEvents, useActionItems, useOrgSettings } from "@/hooks/useFirestore";
 import { fiscalLabelFromOrgSettings } from "@/lib/org-fiscal";
 import type { EventOccurrenceRow } from "@/lib/recurring-events";
@@ -121,7 +122,8 @@ export default function DashboardPage() {
                         <span className="text-primary mr-2">&gt;</span> STATUS: OPERATIONAL
                     </p>
                     <p className="relative z-10 text-[10px] text-muted-foreground font-mono uppercase tracking-wider">
-                        <span className="text-primary mr-2">&gt;</span> CLR: {profile?.role}
+                        <span className="text-primary mr-2">&gt;</span> CLR: {getRoleLabel(profile?.role ?? "member")} ·{" "}
+                        {getResidencyLabel(profile?.residency ?? "resident")}
                     </p>
                 </div>
             </div>

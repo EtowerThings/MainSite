@@ -12,10 +12,10 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { parseClubRole, parseResidency, type ResidencyType } from "@/lib/member-residency";
 
 export type UserRole =
-    | "resident"
-    | "associate"
+    | "member"
     | "marketing"
     | "events"
     | "finance"
@@ -26,7 +26,11 @@ export type UserRole =
     | "vp-marketing"
     | "vp-prof-dev"
     | "vp-finance"
-    | "alumni";
+    | "vp-recruitment"
+    | "alumni"
+    /** @deprecated Legacy Firestore values; normalized on read. */
+    | "resident"
+    | "associate";
 
 export interface EngagementMetrics {
     attendanceRate?: number;
@@ -40,7 +44,10 @@ interface UserProfile {
     email: string | null;
     displayName: string | null;
     photoURL: string | null;
+    /** Club / officer role (permissions). */
     role: UserRole;
+    /** Associate vs resident vs alumni (housing program). */
+    residency: ResidencyType;
     status: "pending" | "approved" | "rejected" | "removed";
     standoutSkill: string | null;
     skills?: string[];
@@ -80,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
                     if (userDoc.exists()) {
                         const data = userDoc.data();
+                        const raw = data as Record<string, unknown>;
                         const metrics = data.engagementMetrics;
                         const onboardingName = data.displayName && String(data.displayName).trim();
                         setProfile({
@@ -87,7 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             email: firebaseUser.email,
                             displayName: onboardingName || firebaseUser.displayName || null,
                             photoURL: data.photoURL || firebaseUser.photoURL,
-                            role: (data.role as UserRole) || "resident",
+                            role: parseClubRole(raw) as UserRole,
+                            residency: parseResidency(raw),
                             status: data.status || (data.onboarded ? "approved" : "pending"), // Handle legacy users
                             standoutSkill: data.standoutSkill || null,
                             skills: data.skills || [],
@@ -110,7 +119,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                                 email: firebaseUser.email || null,
                                 displayName: firebaseUser.displayName || null,
                                 photoURL: firebaseUser.photoURL || null,
-                                role: "resident",
+                                role: "member",
+                                residency: "resident",
                                 status: "pending",
                                 onboarded: false,
                                 createdAt: serverTimestamp(),
@@ -125,7 +135,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             email: firebaseUser.email,
                             displayName: firebaseUser.displayName,
                             photoURL: firebaseUser.photoURL,
-                            role: "resident",
+                            role: "member",
+                            residency: "resident",
                             status: "pending",
                             standoutSkill: null,
                             skills: [],
@@ -142,7 +153,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         email: firebaseUser.email,
                         displayName: firebaseUser.displayName,
                         photoURL: firebaseUser.photoURL,
-                        role: "resident",
+                        role: "member",
+                        residency: "resident",
                         status: "pending",
                         standoutSkill: null,
                         skills: [],
@@ -187,19 +199,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const userDoc = await getDoc(doc(db, "users", currentUser.uid));
             if (userDoc.exists()) {
                 const data = userDoc.data();
+                const raw = data as Record<string, unknown>;
+                const metrics = data.engagementMetrics;
                 const onboardingName = data.displayName && String(data.displayName).trim();
                 setProfile({
                     uid: currentUser.uid,
                     email: currentUser.email,
                     displayName: onboardingName || currentUser.displayName || null,
                     photoURL: data.photoURL || currentUser.photoURL,
-                    role: data.role || "member",
+                    role: parseClubRole(raw) as UserRole,
+                    residency: parseResidency(raw),
                     status: data.status || (data.onboarded ? "approved" : "pending"),
                     standoutSkill: data.standoutSkill || null,
                     skills: data.skills || [],
                     onboarded: data.onboarded === true,
                     openToMentorship: data.openToMentorship || false,
                     linkedin: data.linkedin || data.alumni?.linkedinUrl || null,
+                    engagementMetrics: metrics
+                        ? {
+                              attendanceRate: metrics.attendanceRate ?? 0,
+                              projectsCompleted:
+                                  metrics.projectsCompleted ??
+                                  (Array.isArray(data.projects) ? data.projects.length : 0),
+                              uploadsCount: metrics.uploadsCount ?? 0,
+                              pitchesSubmitted: metrics.pitchesSubmitted ?? 0,
+                          }
+                        : undefined,
                 });
                 setNeedsOnboarding(data.onboarded !== true);
             }

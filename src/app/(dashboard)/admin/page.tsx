@@ -16,6 +16,8 @@ import { expandAllEventOccurrences, occurrenceEventLike, type EventOccurrenceRow
 import { getEventStartMs, parseEventDate } from "@/lib/event-dates";
 import { isAdmin, canAccessAdminCenter, canManageEventAttendance } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES } from "@/lib/roles";
+import { ALL_RESIDENCY_OPTIONS, getResidencyLabel } from "@/lib/member-residency";
+import type { ResidencyType } from "@/lib/member-residency";
 import { cn } from "@/lib/utils";
 import { computeHousingPointsBreakdowns, HOUSING_POINTS_RULES_TEXT } from "@/lib/housing-points";
 import { buildBirthdayRows, membersMissingBirthday } from "@/lib/admin-birthdays";
@@ -120,7 +122,8 @@ export default function AdminPage() {
     const userIsCoreAdmin = isAdmin(profile?.role);
     const userHasExecAccess = canAccessAdminCenter(profile?.role);
     const userCanManageAttendance = canManageEventAttendance(profile?.role);
-    const userSubscribesEvents = userIsCoreAdmin || profile?.role === "vp-events";
+    const userSubscribesEvents =
+        userIsCoreAdmin || profile?.role === "vp-events" || profile?.role === "events";
 
     const { data: inquiries, loading: inquiriesLoading, replyToInquiry, publishToFaq } = useInquiries(userIsCoreAdmin);
     const { data: resources, loading: resourcesLoading, approveResource, rejectResource } = useResources(false, userIsCoreAdmin);
@@ -157,6 +160,7 @@ export default function AdminPage() {
 
     // Applications state
     const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
+    const [selectedResidency, setSelectedResidency] = useState<Record<string, ResidencyType>>({});
 
     const [attendanceRowExpandKey, setAttendanceRowExpandKey] = useState<string | null>(null);
     const [attendanceTableSearch, setAttendanceTableSearch] = useState("");
@@ -254,7 +258,7 @@ export default function AdminPage() {
     }, [events]);
 
     const nonAlumniAttendanceMembers = useMemo(
-        () => approvedMembers.filter((m) => m.role !== "alumni"),
+        () => approvedMembers.filter((m) => m.role !== "alumni" && m.residency !== "alumni"),
         [approvedMembers]
     );
 
@@ -320,12 +324,15 @@ export default function AdminPage() {
         if (!q) return members;
         return members.filter((m) => {
             const roleLabel = getRoleLabel(m.role).toLowerCase();
+            const resLabel = getResidencyLabel(m.residency).toLowerCase();
             const skillsBlob = (m.skills || []).join(" ").toLowerCase();
             const hay = [
                 m.name,
                 m.email,
                 m.role,
                 roleLabel,
+                m.residency,
+                resLabel,
                 m.status,
                 m.standoutSkill,
                 skillsBlob,
@@ -341,7 +348,7 @@ export default function AdminPage() {
 
     const downloadRosterCsv = () => {
         const header =
-            "ID,Name,Email,Role,Role Label,Status,Standout Skill,Skills,Join Date,Projects,Uploads,Attendance,LinkedIn,Bio,Open To Mentorship\n";
+            "ID,Name,Email,Role,Role Label,Residency,Residency Label,Status,Standout Skill,Skills,Join Date,Projects,Uploads,Attendance,LinkedIn,Bio,Open To Mentorship\n";
         const rows = rosterSpreadsheetRows.map((m) =>
             [
                 csvEscape(m.id),
@@ -349,6 +356,8 @@ export default function AdminPage() {
                 csvEscape(m.email),
                 csvEscape(m.role),
                 csvEscape(getRoleLabel(m.role)),
+                csvEscape(m.residency),
+                csvEscape(getResidencyLabel(m.residency)),
                 csvEscape(m.status),
                 csvEscape(m.standoutSkill),
                 csvEscape((m.skills || []).join("; ")),
@@ -552,8 +561,14 @@ export default function AdminPage() {
 
     // ── Application Handling ──
     const handleAuthorize = async (id: string) => {
-        const assignedRole = selectedRoles[id] || "resident";
-        await updateDoc(doc(db, "users", id), { role: assignedRole, status: "approved", updatedAt: serverTimestamp() });
+        const assignedRole = selectedRoles[id] || "member";
+        const assignedResidency = selectedResidency[id] || "resident";
+        await updateDoc(doc(db, "users", id), {
+            role: assignedRole,
+            residency: assignedResidency,
+            status: "approved",
+            updatedAt: serverTimestamp(),
+        });
     };
 
     const handleReject = async (id: string) => {
@@ -874,15 +889,32 @@ export default function AdminPage() {
                                         </p>
                                     )}
 
-                                    <div className="flex flex-col sm:flex-row gap-3 relative z-10 mt-2 sm:items-center">
+                                    <div className="flex flex-col sm:flex-row gap-3 relative z-10 mt-2 sm:items-center flex-wrap">
                                         <div className="w-full sm:w-auto relative group shrink-0">
-                                            <label className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest block mb-1">ASSIGN CLEARANCE</label>
+                                            <label className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest block mb-1">CLUB ROLE</label>
                                             <select
-                                                value={selectedRoles[app.id] || "resident"}
+                                                value={selectedRoles[app.id] || "member"}
                                                 onChange={(e) => setSelectedRoles({ ...selectedRoles, [app.id]: e.target.value })}
                                                 className="w-full sm:w-48 text-[10px] font-mono font-bold uppercase tracking-widest px-3 py-2 hud-panel-sm bg-background border border-border/50 text-foreground focus:outline-none focus:border-primary/50 transition-colors cursor-pointer appearance-none"
                                             >
                                                 {ALL_ROLES.map((r) => (
+                                                    <option key={r.value} value={r.value}>{r.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="w-full sm:w-auto relative group shrink-0">
+                                            <label className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest block mb-1">RESIDENCY</label>
+                                            <select
+                                                value={selectedResidency[app.id] || "resident"}
+                                                onChange={(e) =>
+                                                    setSelectedResidency({
+                                                        ...selectedResidency,
+                                                        [app.id]: e.target.value as ResidencyType,
+                                                    })
+                                                }
+                                                className="w-full sm:w-44 text-[10px] font-mono font-bold uppercase tracking-widest px-3 py-2 hud-panel-sm bg-background border border-border/50 text-foreground focus:outline-none focus:border-primary/50 transition-colors cursor-pointer appearance-none"
+                                            >
+                                                {ALL_RESIDENCY_OPTIONS.map((r) => (
                                                     <option key={r.value} value={r.value}>{r.label}</option>
                                                 ))}
                                             </select>
@@ -1088,6 +1120,7 @@ export default function AdminPage() {
                                                     <th className="py-2.5 pr-3 whitespace-nowrap">Email</th>
                                                     <th className="py-2.5 pr-3 whitespace-nowrap">Status</th>
                                                     <th className="py-2.5 pr-3 whitespace-nowrap">Role</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">Residency</th>
                                                     <th className="py-2.5 pr-3 whitespace-nowrap">Standout</th>
                                                     <th className="py-2.5 pr-3 min-w-[140px]">Skills</th>
                                                     <th className="py-2.5 pr-3 whitespace-nowrap">Joined</th>
@@ -1159,6 +1192,35 @@ export default function AdminPage() {
                                                                 ) : (
                                                                     <span className="text-primary/90 uppercase">
                                                                         {getRoleLabel(member.role)}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2 pr-3 align-top whitespace-nowrap">
+                                                                {canEditRole ? (
+                                                                    <select
+                                                                        value={member.residency}
+                                                                        onChange={async (e) => {
+                                                                            const next = e.target.value as ResidencyType;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    residency: next,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Residency update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className="max-w-[120px] text-[9px] font-mono font-bold uppercase tracking-widest px-2 py-1.5 hud-panel-sm bg-background/80 border border-border/50 text-foreground focus:outline-none focus:border-primary/50 cursor-pointer appearance-none"
+                                                                    >
+                                                                        {ALL_RESIDENCY_OPTIONS.map((r) => (
+                                                                            <option key={r.value} value={r.value}>
+                                                                                {r.label}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <span className="text-muted-foreground uppercase">
+                                                                        {getResidencyLabel(member.residency)}
                                                                     </span>
                                                                 )}
                                                             </td>

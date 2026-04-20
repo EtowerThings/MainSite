@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { isAdmin, isPresident } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES, ADMIN_ROLES, LEADERSHIP_ROLES } from "@/lib/roles";
+import { ALL_RESIDENCY_OPTIONS, getResidencyLabel } from "@/lib/member-residency";
+import type { ResidencyType } from "@/lib/member-residency";
 import type { UserRole } from "@/contexts/auth-context";
 import {
     useMembers,
@@ -31,6 +33,7 @@ import {
     X,
     Check,
     UserMinus,
+    UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -45,9 +48,15 @@ const roleConfig: Record<string, { label: string; color: string; icon: React.Rea
     "vp-marketing": { label: "VP MKTG", color: "bg-primary/10 border-primary/50 text-primary", icon: <Star className="w-3.5 h-3.5" /> },
     "vp-prof-dev": { label: "VP PROF DEV", color: "bg-accent/10 border-accent/50 text-accent-foreground", icon: <Terminal className="w-3.5 h-3.5" /> },
     "vp-finance": { label: "VP FINANCE", color: "bg-chart-1/10 border-chart-1/50 text-chart-1", icon: <Briefcase className="w-3.5 h-3.5" /> },
-    associate: { label: "ASSOCIATE", color: "bg-chart-4/10 border-chart-4/50 text-chart-4", icon: <User className="w-3.5 h-3.5" /> },
-    resident: { label: "RESIDENT", color: "bg-background border-border/50 text-muted-foreground", icon: <User className="w-3.5 h-3.5" /> },
+    "vp-recruitment": { label: "VP RECRUIT", color: "bg-chart-4/10 border-chart-4/50 text-chart-4", icon: <UserPlus className="w-3.5 h-3.5" /> },
+    member: { label: "MEMBER", color: "bg-background border-border/50 text-muted-foreground", icon: <User className="w-3.5 h-3.5" /> },
     alumni: { label: "ALUMNI", color: "bg-chart-5/10 border-chart-5/50 text-chart-5", icon: <User className="w-3.5 h-3.5" /> },
+};
+
+const residencyBadgeClass: Record<ResidencyType, string> = {
+    resident: "bg-chart-2/10 border-chart-2/40 text-chart-2",
+    associate: "bg-primary/10 border-primary/40 text-primary",
+    alumni: "bg-chart-5/10 border-chart-5/40 text-chart-5",
 };
 
 export default function MembersPage() {
@@ -65,19 +74,31 @@ export default function MembersPage() {
     const [removingId, setRemovingId] = useState<string | null>(null);
     const [removeConfirm, setRemoveConfirm] = useState<string | null>(null);
     const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
+    const [residencyUpdatingId, setResidencyUpdatingId] = useState<string | null>(null);
 
     const userIsAdmin = isAdmin(profile?.role);
     const userIsPresident = isPresident(profile?.role);
 
+    const isAlumniMember = (m: MemberItem) => m.role === "alumni" || m.residency === "alumni";
+    const isResidentsGroup = (m: MemberItem) =>
+        m.residency === "resident" || ADMIN_ROLES.includes(m.role as UserRole);
+
     const filtered = members
-        .filter((m) => roleFilter === "all" || m.role === roleFilter || (roleFilter === "residents" && (m.role === "resident" || ADMIN_ROLES.includes(m.role as any))))
+        .filter((m) => {
+            if (roleFilter === "all") return true;
+            if (roleFilter === "residents") return isResidentsGroup(m);
+            if (roleFilter === "resident") return m.residency === "resident";
+            if (roleFilter === "associate") return m.residency === "associate";
+            if (roleFilter === "alumni") return isAlumniMember(m);
+            return m.role === roleFilter;
+        })
         .filter((m) => m.name.toLowerCase().includes(search.toLowerCase()) || m.standoutSkill.toLowerCase().includes(search.toLowerCase()));
 
     const roleCounts = {
         total: members.length,
-        residents: members.filter((m) => m.role === "resident" || ADMIN_ROLES.includes(m.role as any)).length,
-        associates: members.filter((m) => m.role === "associate").length,
-        alumni: members.filter((m) => m.role === "alumni").length,
+        residents: members.filter(isResidentsGroup).length,
+        associates: members.filter((m) => m.residency === "associate").length,
+        alumni: members.filter(isAlumniMember).length,
     };
 
     const rosterEngagement = useMemo(() => {
@@ -166,7 +187,7 @@ export default function MembersPage() {
             {!loading && (
                 <div className="flex-1 grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
                     {filtered.map((member, i) => {
-                        const rc = roleConfig[member.role] || roleConfig.resident;
+                        const rc = roleConfig[member.role] || roleConfig.member;
                         const isHighCommand = LEADERSHIP_ROLES.includes(member.role as UserRole);
                         const eng = rosterEngagement.get(member.id);
 
@@ -198,9 +219,14 @@ export default function MembersPage() {
                                                 </a>
                                             )}
                                         </div>
-                                        <span className={cn("inline-flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border hud-panel-sm mt-1", rc.color)}>
-                                            {rc.icon} {rc.label}
-                                        </span>
+                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                            <span className={cn("inline-flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border hud-panel-sm", rc.color)}>
+                                                {rc.icon} {rc.label}
+                                            </span>
+                                            <span className={cn("inline-flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border hud-panel-sm", residencyBadgeClass[member.residency])}>
+                                                {getResidencyLabel(member.residency).toUpperCase()}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -274,35 +300,67 @@ export default function MembersPage() {
 
                                     <div className="flex flex-wrap items-center gap-2 mb-4 justify-center sm:justify-start">
                                         {userIsAdmin ? (
-                                            <div className="flex flex-col gap-1">
-                                                <label className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest">CLEARANCE</label>
-                                                <select
-                                                    value={selectedMember.role}
-                                                    onChange={async (e) => {
-                                                        const newRole = e.target.value;
-                                                        if (!selectedMember?.id) return;
-                                                        setRoleUpdatingId(selectedMember.id);
-                                                        try {
-                                                            await updateDoc(doc(db, "users", selectedMember.id), { role: newRole, updatedAt: serverTimestamp() });
-                                                            setSelectedMember((prev) => (prev ? { ...prev, role: newRole } : null));
-                                                        } catch (err) {
-                                                            console.error("Role update error:", err);
-                                                        } finally {
-                                                            setRoleUpdatingId(null);
-                                                        }
-                                                    }}
-                                                    disabled={roleUpdatingId === selectedMember.id}
-                                                    className={cn("text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm bg-background cursor-pointer", roleConfig[selectedMember.role]?.color || roleConfig.resident.color)}
-                                                >
-                                                    {ALL_ROLES.map((r) => (
-                                                        <option key={r.value} value={r.value}>{r.label}</option>
-                                                    ))}
-                                                </select>
+                                            <div className="flex flex-col sm:flex-row gap-3">
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest">CLUB ROLE</label>
+                                                    <select
+                                                        value={selectedMember.role}
+                                                        onChange={async (e) => {
+                                                            const newRole = e.target.value;
+                                                            if (!selectedMember?.id) return;
+                                                            setRoleUpdatingId(selectedMember.id);
+                                                            try {
+                                                                await updateDoc(doc(db, "users", selectedMember.id), { role: newRole, updatedAt: serverTimestamp() });
+                                                                setSelectedMember((prev) => (prev ? { ...prev, role: newRole } : null));
+                                                            } catch (err) {
+                                                                console.error("Role update error:", err);
+                                                            } finally {
+                                                                setRoleUpdatingId(null);
+                                                            }
+                                                        }}
+                                                        disabled={roleUpdatingId === selectedMember.id || residencyUpdatingId === selectedMember.id}
+                                                        className={cn("text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm bg-background cursor-pointer", roleConfig[selectedMember.role]?.color || roleConfig.member.color)}
+                                                    >
+                                                        {ALL_ROLES.map((r) => (
+                                                            <option key={r.value} value={r.value}>{r.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-[8px] font-mono font-bold text-muted-foreground uppercase tracking-widest">RESIDENCY</label>
+                                                    <select
+                                                        value={selectedMember.residency}
+                                                        onChange={async (e) => {
+                                                            const next = e.target.value as ResidencyType;
+                                                            if (!selectedMember?.id) return;
+                                                            setResidencyUpdatingId(selectedMember.id);
+                                                            try {
+                                                                await updateDoc(doc(db, "users", selectedMember.id), { residency: next, updatedAt: serverTimestamp() });
+                                                                setSelectedMember((prev) => (prev ? { ...prev, residency: next } : null));
+                                                            } catch (err) {
+                                                                console.error("Residency update error:", err);
+                                                            } finally {
+                                                                setResidencyUpdatingId(null);
+                                                            }
+                                                        }}
+                                                        disabled={residencyUpdatingId === selectedMember.id || roleUpdatingId === selectedMember.id}
+                                                        className={cn("text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm bg-background cursor-pointer", residencyBadgeClass[selectedMember.residency])}
+                                                    >
+                                                        {ALL_RESIDENCY_OPTIONS.map((r) => (
+                                                            <option key={r.value} value={r.value}>{r.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                             </div>
                                         ) : (
-                                            <span className={cn("inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm", roleConfig[selectedMember.role]?.color || roleConfig.resident.color)}>
-                                                {roleConfig[selectedMember.role]?.icon || roleConfig.resident.icon} {roleConfig[selectedMember.role]?.label || roleConfig.resident.label}
-                                            </span>
+                                            <div className="flex flex-wrap gap-2">
+                                                <span className={cn("inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm", roleConfig[selectedMember.role]?.color || roleConfig.member.color)}>
+                                                    {roleConfig[selectedMember.role]?.icon || roleConfig.member.icon} {roleConfig[selectedMember.role]?.label || roleConfig.member.label}
+                                                </span>
+                                                <span className={cn("inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm", residencyBadgeClass[selectedMember.residency])}>
+                                                    {getResidencyLabel(selectedMember.residency).toUpperCase()}
+                                                </span>
+                                            </div>
                                         )}
                                         {selectedMember.role === "alumni" && selectedMember.openToMentorship && (
                                             <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-widest px-2 py-1.5 border border-chart-2/50 bg-chart-2/10 text-chart-2 hud-panel-sm">

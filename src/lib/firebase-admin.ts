@@ -1,4 +1,5 @@
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
+import { parseClubRole } from "@/lib/member-residency";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
@@ -68,5 +69,6 @@ export async function verifyIdToken(token: string) {
 
 export async function getUserRole(uid: string) {
     const userDoc = await getAdminDbInstance().collection("users").doc(uid).get();
-    return (userDoc.data()?.role as string) || "member";
+    const data = userDoc.data() as Record<string, unknown> | undefined;
+    return parseClubRole(data ?? {});
 }

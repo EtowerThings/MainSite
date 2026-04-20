@@ -4,15 +4,20 @@ import { UserRole } from "@/contexts/auth-context";
 export const ADMIN_ROLES: UserRole[] = ["president", "vice-president", "community-manager"];
 
 /** Functional VPs — access admin center for broadcasts, budgets, and role-specific tools. */
-export const VP_ROLES: UserRole[] = ["vp-events", "vp-marketing", "vp-prof-dev", "vp-finance"];
+export const VP_ROLES: UserRole[] = [
+    "vp-events",
+    "vp-marketing",
+    "vp-prof-dev",
+    "vp-finance",
+    "vp-recruitment",
+];
 
 /** Leadership / e-board display (badges, roster filters). */
 export const LEADERSHIP_ROLES: UserRole[] = [...ADMIN_ROLES, ...VP_ROLES];
 
-// All roles in the organization
+/** Club / team role (Firestore `role`). Residency is separate (`residency` field). */
 export const ALL_ROLES: { value: UserRole; label: string }[] = [
-    { value: "resident", label: "Resident" },
-    { value: "associate", label: "Associate" },
+    { value: "member", label: "Member" },
     { value: "marketing", label: "Marketing" },
     { value: "events", label: "Events" },
     { value: "finance", label: "Finance" },
@@ -20,6 +25,7 @@ export const ALL_ROLES: { value: UserRole; label: string }[] = [
     { value: "vp-marketing", label: "VP of Marketing" },
     { value: "vp-prof-dev", label: "VP of Prof Dev" },
     { value: "vp-finance", label: "VP of Finance" },
+    { value: "vp-recruitment", label: "VP of Recruitment" },
     { value: "vice-president", label: "Vice President" },
     { value: "president", label: "President" },
     { value: "community-manager", label: "Community Manager" },
