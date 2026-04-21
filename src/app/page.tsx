@@ -50,13 +50,9 @@ export default function LandingPage() {
       {/* Grid Background */}
       <div className="pointer-events-none fixed inset-0 grid-bg opacity-60" />
 
-      {/* Neon glow orbs */}
-      <div className="pointer-events-none fixed top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full blur-[120px] opacity-20"
-        style={{ background: "radial-gradient(circle, #cbf702, transparent)" }}
-      />
-      <div className="pointer-events-none fixed bottom-[-20%] right-[-10%] w-[400px] h-[400px] rounded-full blur-[120px] opacity-10"
-        style={{ background: "radial-gradient(circle, #cbf702, transparent)" }}
-      />
+      {/* Ambient glow orbs — color follows --primary */}
+      <div className="pointer-events-none fixed top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full blur-[120px] opacity-20 landing-glow-orb" />
+      <div className="pointer-events-none fixed bottom-[-20%] right-[-10%] w-[400px] h-[400px] rounded-full blur-[120px] opacity-10 landing-glow-orb" />
 
       {/* 3D Spline Overlay */}
       <div className="fixed inset-0 z-0 pointer-events-none opacity-80 mix-blend-screen dark:mix-blend-plus-lighter">
@@ -145,7 +141,7 @@ ERR_CONNECTION_REFUSED
                 ))}
               </div>
 
-              {/* Intricate Neon-Green Circular HUD System */}
+              {/* Circular HUD rings — accents use --primary */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] h-[340px] border-[1px] border-primary/20 rounded-full animate-spin" style={{ animationDuration: '30s' }}>
                 <div className="absolute -top-1 left-1/2 w-4 h-2 bg-primary -translate-x-1/2 shadow-[0_0_10px_var(--primary)]" />
                 <div className="absolute -bottom-1 left-1/2 w-4 h-2 bg-primary -translate-x-1/2 shadow-[0_0_10px_var(--primary)]" />
@@ -153,19 +149,19 @@ ERR_CONNECTION_REFUSED
                 <div className="absolute top-1/2 -right-1 w-2 h-4 bg-primary -translate-y-1/2 shadow-[0_0_10px_var(--primary)]" />
               </div>
 
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] border-[4px] border-transparent border-t-primary/60 border-b-primary/60 rounded-full animate-spin shadow-[inset_0_0_20px_rgba(203,247,2,0.1)]" style={{ animationDirection: 'reverse', animationDuration: '10s' }} />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] border-[4px] border-transparent border-t-primary/60 border-b-primary/60 rounded-full animate-spin hero-hud-spin-inset" style={{ animationDirection: 'reverse', animationDuration: '10s' }} />
 
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-[12px] border-primary/20 rounded-full animate-spin" style={{ animationDuration: '4s', clipPath: 'polygon(0 0, 100% 0, 100% 30%, 0 30%, 0 70%, 100% 70%, 100% 100%, 0 100%)' }} />
 
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-[2px] border-primary border-dashed rounded-full animate-spin" style={{ animationDuration: '8s' }} />
 
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 border-[6px] border-primary rounded-full animate-pulse shadow-[0_0_30px_rgba(203,247,2,0.4)]" style={{ clipPath: 'polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)' }} />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 border-[6px] border-primary rounded-full animate-pulse hero-hud-shape-glow" style={{ clipPath: 'polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)' }} />
             </div>
 
             {/* Center Circular Dashboard Button (Glowing Eye) */}
             <Link
               href={user ? "/dashboard" : "/login"}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full bg-primary border-[6px] border-background text-primary-foreground flex flex-col items-center justify-center font-black text-[10px] sm:text-[11px] tracking-widest uppercase hover:bg-foreground hover:text-primary transition-all duration-300 z-50 pointer-events-auto shadow-[0_0_50px_rgba(203,247,2,0.8)] hover:shadow-[0_0_80px_rgba(203,247,2,1)] group hover:scale-110"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full bg-primary border-[6px] border-background text-primary-foreground flex flex-col items-center justify-center font-black text-[10px] sm:text-[11px] tracking-widest uppercase hover:bg-foreground hover:text-primary transition-transform duration-300 z-50 pointer-events-auto hero-dashboard-glow group hover:scale-110"
             >
               <div className="absolute inset-0 bg-primary/50 animate-ping rounded-full opacity-30 pointer-events-none" />
               <Terminal className="w-6 h-6 mb-1 transition-transform duration-300 group-hover:-translate-y-1 group-hover:scale-110" />
@@ -249,7 +245,7 @@ ERR_CONNECTION_REFUSED
           </div>
 
           <Link href={`/projects/${featuredProject.id}`} className="group block text-left">
-            <div className="hud-panel bg-card/60 border border-border/40 overflow-hidden relative transition-all duration-300 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(203,247,2,0.1)]">
+            <div className="hud-panel bg-card/60 border border-border/40 overflow-hidden relative hover:border-primary/50 landing-featured-card">
               {/* Corner accent */}
               <div className="absolute top-0 right-0 w-0 h-0 border-t-[32px] border-t-primary/20 border-l-[32px] border-l-transparent group-hover:border-t-primary/50 transition-colors z-20" />
 

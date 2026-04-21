@@ -43,13 +43,9 @@ export default function LoginPage() {
             {/* Grid Background */}
             <div className="pointer-events-none fixed inset-0 grid-bg opacity-40" />
 
-            {/* Neon glow orbs */}
-            <div className="pointer-events-none fixed top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full blur-[120px] opacity-20"
-                style={{ background: "radial-gradient(circle, #cbf702, transparent)" }}
-            />
-            <div className="pointer-events-none fixed bottom-[-20%] left-[-10%] w-[400px] h-[400px] rounded-full blur-[120px] opacity-10"
-                style={{ background: "radial-gradient(circle, #cbf702, transparent)" }}
-            />
+            {/* Ambient glow orbs — follow --primary */}
+            <div className="pointer-events-none fixed top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full blur-[120px] opacity-20 landing-glow-orb" />
+            <div className="pointer-events-none fixed bottom-[-20%] left-[-10%] w-[400px] h-[400px] rounded-full blur-[120px] opacity-10 landing-glow-orb" />
 
             {/* Left branding panel */}
             <div className="hidden lg:flex lg:w-1/2 relative border-r border-border/40 items-center justify-center p-12">
