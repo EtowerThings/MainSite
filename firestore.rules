@@ -21,12 +21,14 @@ service cloud.firestore {
     }
 
     function isVpRole() {
-      return userExists() && userRole() in ['vp-events', 'vp-marketing', 'vp-prof-dev', 'vp-finance', 'vp-recruitment'];
+      return userExists() && userRole() in ['vp-events', 'vp-marketing', 'vp-prof-dev', 'vp-finance', 'vp-recruitment', 'vp-outreach'];
     }
 
-    /** Core admins or functional VPs (announcements, budgets). */
+    /** Core admins, functional VPs, or recruitment/outreach team (announcements, budgets). */
     function canPostAnnouncement() {
-      return isSignedIn() && userExists() && (isAdmin() || isVpRole());
+      return isSignedIn() && userExists() && (
+        isAdmin() || isVpRole() || userRole() in ['recruitment', 'outreach']
+      );
     }
     
     function canEditEvents() {

@@ -7,11 +7,14 @@ const OFFICER_ROLES = new Set([
     "marketing",
     "events",
     "finance",
+    "recruitment",
+    "outreach",
     "vp-events",
     "vp-marketing",
     "vp-prof-dev",
     "vp-finance",
     "vp-recruitment",
+    "vp-outreach",
 ]);
 
 export type HousingPointsBreakdown = {
@@ -171,7 +174,7 @@ export const HOUSING_POINTS_RULES_TEXT = [
     "Attendance (past sessions where a roll was saved): +1 if marked present; −1 if not marked present; −3 if you are the assigned event host and did not show as present.",
     "Community meetings and club events both use this +1 / −1 session rule (same point value as in the club handbook table).",
     "Host an event: +4 when you are set as the event host (Admin or VP Events sets this on each event).",
-    "Officers (Marketing, Events, Finance, functional VPs including VP Recruitment): +2.",
+    "Officers (Marketing, Events, Finance, Recruitment, Outreach, functional VPs including VP Recruitment and VP Outreach): +2.",
     "Executive (President, Vice President, Community Manager): +3.",
     "Residency: +2 per estimated semester since join for everyone except associates and alumni (non-associates count as residents for this purpose).",
     "Handbook reference — No show (meeting): −1; No show (hosting an event): −3 when you are the assigned host and absent on the roll.",

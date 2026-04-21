@@ -34,6 +34,7 @@ import {
     Check,
     UserMinus,
     UserPlus,
+    Handshake,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -44,11 +45,14 @@ const roleConfig: Record<string, { label: string; color: string; icon: React.Rea
     marketing: { label: "MARKETING", color: "bg-primary/10 border-primary/50 text-primary", icon: <Star className="w-3.5 h-3.5" /> },
     events: { label: "EVENTS", color: "bg-chart-3/10 border-chart-3/50 text-chart-3", icon: <Star className="w-3.5 h-3.5" /> },
     finance: { label: "FINANCE", color: "bg-chart-1/10 border-chart-1/50 text-chart-1", icon: <Briefcase className="w-3.5 h-3.5" /> },
+    recruitment: { label: "RECRUITMENT", color: "bg-chart-4/10 border-chart-4/50 text-chart-4", icon: <UserPlus className="w-3.5 h-3.5" /> },
+    outreach: { label: "OUTREACH", color: "bg-primary/10 border-primary/45 text-primary", icon: <Handshake className="w-3.5 h-3.5" /> },
     "vp-events": { label: "VP EVENTS", color: "bg-chart-3/10 border-chart-3/50 text-chart-3", icon: <Star className="w-3.5 h-3.5" /> },
     "vp-marketing": { label: "VP MKTG", color: "bg-primary/10 border-primary/50 text-primary", icon: <Star className="w-3.5 h-3.5" /> },
     "vp-prof-dev": { label: "VP PROF DEV", color: "bg-accent/10 border-accent/50 text-accent-foreground", icon: <Terminal className="w-3.5 h-3.5" /> },
     "vp-finance": { label: "VP FINANCE", color: "bg-chart-1/10 border-chart-1/50 text-chart-1", icon: <Briefcase className="w-3.5 h-3.5" /> },
     "vp-recruitment": { label: "VP RECRUIT", color: "bg-chart-4/10 border-chart-4/50 text-chart-4", icon: <UserPlus className="w-3.5 h-3.5" /> },
+    "vp-outreach": { label: "VP OUTREACH", color: "bg-primary/10 border-primary/45 text-primary", icon: <Handshake className="w-3.5 h-3.5" /> },
     member: { label: "MEMBER", color: "bg-background border-border/50 text-muted-foreground", icon: <User className="w-3.5 h-3.5" /> },
     alumni: { label: "ALUMNI", color: "bg-chart-5/10 border-chart-5/50 text-chart-5", icon: <User className="w-3.5 h-3.5" /> },
 };

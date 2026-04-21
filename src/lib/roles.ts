@@ -10,10 +10,14 @@ export const VP_ROLES: UserRole[] = [
     "vp-prof-dev",
     "vp-finance",
     "vp-recruitment",
+    "vp-outreach",
 ];
 
 /** Leadership / e-board display (badges, roster filters). */
 export const LEADERSHIP_ROLES: UserRole[] = [...ADMIN_ROLES, ...VP_ROLES];
+
+/** Team leads who can open Admin Tools for broadcasts and budgets (not full core-admin roster). */
+export const ANNOUNCEMENT_TEAM_ROLES: UserRole[] = ["recruitment", "outreach"];
 
 /** Club / team role (Firestore `role`). Residency is separate (`residency` field). */
 export const ALL_ROLES: { value: UserRole; label: string }[] = [
@@ -21,11 +25,14 @@ export const ALL_ROLES: { value: UserRole; label: string }[] = [
     { value: "marketing", label: "Marketing" },
     { value: "events", label: "Events" },
     { value: "finance", label: "Finance" },
+    { value: "recruitment", label: "Recruitment" },
+    { value: "outreach", label: "Outreach" },
     { value: "vp-events", label: "VP of Events" },
     { value: "vp-marketing", label: "VP of Marketing" },
     { value: "vp-prof-dev", label: "VP of Prof Dev" },
     { value: "vp-finance", label: "VP of Finance" },
     { value: "vp-recruitment", label: "VP of Recruitment" },
+    { value: "vp-outreach", label: "VP of Outreach" },
     { value: "vice-president", label: "Vice President" },
     { value: "president", label: "President" },
     { value: "community-manager", label: "Community Manager" },
@@ -37,12 +44,16 @@ export function isAdmin(role: string | undefined): boolean {
     return ADMIN_ROLES.includes(role as UserRole);
 }
 
-/** Core admins or functional VPs — can open Admin Tools and post announcements. */
+/** Core admins, functional VPs, or recruitment/outreach team leads — Admin Tools (limited tabs) and announcements. */
 export function canAccessAdminCenter(role: string | undefined): boolean {
-    return isAdmin(role) || VP_ROLES.includes(role as UserRole);
+    return (
+        isAdmin(role) ||
+        VP_ROLES.includes(role as UserRole) ||
+        ANNOUNCEMENT_TEAM_ROLES.includes(role as UserRole)
+    );
 }
 
-/** Same set as admin center access — announcements and budgets. */
+/** Same set as admin center access for announcements and budgets. */
 export function canPostAnnouncement(role: string | undefined): boolean {
     return canAccessAdminCenter(role);
 }

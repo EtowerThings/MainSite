@@ -19,6 +19,8 @@ export type UserRole =
     | "marketing"
     | "events"
     | "finance"
+    | "recruitment"
+    | "outreach"
     | "vice-president"
     | "president"
     | "community-manager"
@@ -27,6 +29,7 @@ export type UserRole =
     | "vp-prof-dev"
     | "vp-finance"
     | "vp-recruitment"
+    | "vp-outreach"
     | "alumni"
     /** @deprecated Legacy Firestore values; normalized on read. */
     | "resident"
