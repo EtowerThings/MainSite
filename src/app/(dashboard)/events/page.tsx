@@ -40,6 +40,74 @@ function formatOccurrenceDisplay(isoYmd: string): string {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+type HousingHostPickerMember = { id: string; name: string };
+
+function HousingHostsPicker({
+    value,
+    onChange,
+    members,
+    disabled,
+}: {
+    value: string[];
+    onChange: (uids: string[]) => void;
+    members: HousingHostPickerMember[];
+    disabled?: boolean;
+}) {
+    const remove = (uid: string) => onChange(value.filter((x) => x !== uid));
+    const add = (uid: string) => {
+        if (!uid || value.includes(uid)) return;
+        onChange([...value, uid]);
+    };
+    const available = members.filter((m) => !value.includes(m.id));
+    return (
+        <div className="space-y-2">
+            {value.length > 0 ? (
+                <ul className="flex flex-wrap gap-2">
+                    {value.map((id) => {
+                        const m = members.find((x) => x.id === id);
+                        return (
+                            <li
+                                key={id}
+                                className="flex items-center gap-1.5 rounded border border-border/50 bg-background/60 px-2 py-1 text-[10px] font-mono text-foreground"
+                            >
+                                <span className="max-w-[160px] truncate">{m?.name ?? id}</span>
+                                <button
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() => remove(id)}
+                                    className="shrink-0 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive disabled:opacity-50"
+                                    aria-label={`Remove ${m?.name ?? "host"}`}
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </li>
+                        );
+                    })}
+                </ul>
+            ) : (
+                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">No hosts assigned</p>
+            )}
+            <select
+                key={value.join(",")}
+                value=""
+                disabled={disabled || available.length === 0}
+                onChange={(e) => {
+                    const uid = e.target.value;
+                    if (uid) add(uid);
+                }}
+                className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none disabled:opacity-50"
+            >
+                <option value="">{available.length === 0 ? "All eligible members are hosts" : "Add host…"}</option>
+                {available.map((m) => (
+                    <option key={m.id} value={m.id}>
+                        {m.name}
+                    </option>
+                ))}
+            </select>
+        </div>
+    );
+}
+
 const typeColors: Record<string, string> = {
     workshop: "bg-chart-1/10 border-chart-1/30 text-chart-1",
     meeting: "bg-primary/10 border-primary/30 text-primary",
@@ -65,8 +133,8 @@ const defaultEvent = {
     isVirtual: false,
     isRecurring: false,
     recurrenceWeeks: 4,
-    /** Housing host uid (set by admin / VP Events); empty = none. */
-    housingHostUid: "",
+    /** Housing host uids (set by admin / VP Events). */
+    housingHostUids: [] as string[],
 };
 
 export default function EventsPage() {
@@ -150,7 +218,7 @@ export default function EventsPage() {
             isVirtual: !!isVirtual,
             isRecurring: !!(rec && rec.interval === "weekly" && rec.count > 1),
             recurrenceWeeks: rec?.count ?? 4,
-            housingHostUid: event.housingHostUid ?? "",
+            housingHostUids: [...(event.housingHostUids ?? [])],
         });
         setEditStatus(event.status || "upcoming");
         setEditingEvent(events.find((e) => e.id === event.id) ?? event);
@@ -245,7 +313,7 @@ export default function EventsPage() {
                     tags: newEvent.tags.split(",").map((t) => t.trim()).filter(Boolean),
                     featured: newEvent.featured,
                     createdBy: profile?.uid || "",
-                    housingHostUid: newEvent.housingHostUid?.trim() || null,
+                    housingHostUids: newEvent.housingHostUids,
                 recurrence,
                 });
 
@@ -316,7 +384,7 @@ export default function EventsPage() {
                 tags: editForm.tags.split(",").map((t) => t.trim()).filter(Boolean),
                 featured: editForm.featured,
                 recurrence,
-                housingHostUid: editForm.housingHostUid?.trim() || null,
+                housingHostUids: editForm.housingHostUids,
             });
             setEditingEvent(null);
         } catch (err) {
@@ -716,23 +784,16 @@ export default function EventsPage() {
                             {userCanEditEvents && (
                                 <div className="p-4 hud-corners bg-background/40 border border-border/50">
                                     <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                                        <Users className="w-3.5 h-3.5" /> EVENT HOST (HOUSING)
+                                        <Users className="w-3.5 h-3.5" /> EVENT HOSTS (HOUSING)
                                     </label>
-                                    <select
-                                        value={newEvent.housingHostUid}
-                                        onChange={(e) => update("housingHostUid", e.target.value)}
+                                    <HousingHostsPicker
+                                        value={newEvent.housingHostUids}
+                                        onChange={(uids) => setNewEvent((p) => ({ ...p, housingHostUids: uids }))}
+                                        members={hostPickerMembers}
                                         disabled={membersLoading}
-                                        className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none disabled:opacity-50"
-                                    >
-                                        <option value="">No host assigned</option>
-                                        {hostPickerMembers.map((m) => (
-                                            <option key={m.id} value={m.id}>
-                                                {m.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    />
                                     <p className="text-[9px] font-mono text-muted-foreground mt-2 leading-relaxed">
-                                        Used for housing points: +4 when set, −3 if the host is absent on attendance.
+                                        Each listed host gets +4 for this event; −3 on a saved roll if that host is absent.
                                     </p>
                                 </div>
                             )}
@@ -915,23 +976,16 @@ export default function EventsPage() {
                             {userCanEditEvents && (
                                 <div className="p-4 hud-corners bg-background/40 border border-border/50">
                                     <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                                        <Users className="w-3.5 h-3.5" /> EVENT HOST (HOUSING)
+                                        <Users className="w-3.5 h-3.5" /> EVENT HOSTS (HOUSING)
                                     </label>
-                                    <select
-                                        value={editForm.housingHostUid}
-                                        onChange={(e) => updateEditForm("housingHostUid", e.target.value)}
+                                    <HousingHostsPicker
+                                        value={editForm.housingHostUids}
+                                        onChange={(uids) => setEditForm((p) => ({ ...p, housingHostUids: uids }))}
+                                        members={hostPickerMembers}
                                         disabled={membersLoading}
-                                        className="w-full px-4 py-2.5 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono focus:outline-none disabled:opacity-50"
-                                    >
-                                        <option value="">No host assigned</option>
-                                        {hostPickerMembers.map((m) => (
-                                            <option key={m.id} value={m.id}>
-                                                {m.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    />
                                     <p className="text-[9px] font-mono text-muted-foreground mt-2 leading-relaxed">
-                                        +4 housing points per event when assigned; −3 if host is absent on a saved roll.
+                                        +4 per listed host; −3 on a saved roll if that host is absent.
                                     </p>
                                 </div>
                             )}

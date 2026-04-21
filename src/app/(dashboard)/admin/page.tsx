@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, Fragment } from "react";
+import { useState, useMemo, useEffect, useRef, Fragment } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
     useInquiries,
@@ -14,17 +14,19 @@ import {
 } from "@/hooks/useFirestore";
 import { expandAllEventOccurrences, occurrenceEventLike, type EventOccurrenceRow } from "@/lib/recurring-events";
 import { getEventStartMs, parseEventDate } from "@/lib/event-dates";
-import { isAdmin, canAccessAdminCenter, canManageEventAttendance } from "@/lib/roles";
+import { isAdmin, canAccessAdminCenter, canManageEventAttendance, isPresident } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES } from "@/lib/roles";
 import { ALL_RESIDENCY_OPTIONS, getResidencyLabel } from "@/lib/member-residency";
 import type { ResidencyType } from "@/lib/member-residency";
 import { cn } from "@/lib/utils";
 import { computeHousingPointsBreakdowns, HOUSING_POINTS_RULES_TEXT } from "@/lib/housing-points";
 import { buildBirthdayRows, membersMissingBirthday } from "@/lib/admin-birthdays";
+import { STARTUP_BUSINESS_CATEGORIES } from "@/lib/startup-gallery";
 import { BudgetAdminTab } from "@/components/budget-admin-tab";
 import { ClubFiscalAdminTab } from "@/components/club-fiscal-admin-tab";
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "@/lib/firebase";
 import {
     MessageSquare,
     Users,
@@ -43,6 +45,7 @@ import {
     CheckSquare,
     Target,
     Rocket,
+    Upload,
     Download,
     List,
     ClipboardCheck,
@@ -62,6 +65,8 @@ function formatOccurrenceDisplay(isoYmd: string): string {
     if (isNaN(d.getTime())) return isoYmd;
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
+
+const ROSTER_STATUS_OPTIONS = ["pending", "approved", "rejected", "removed"] as const;
 
 function localTodayYmd(): string {
     const n = new Date();
@@ -120,6 +125,7 @@ function adminTabAllowed(
 export default function AdminPage() {
     const { profile, user } = useAuth();
     const userIsCoreAdmin = isAdmin(profile?.role);
+    const userIsPresident = isPresident(profile?.role);
     const userHasExecAccess = canAccessAdminCenter(profile?.role);
     const userCanManageAttendance = canManageEventAttendance(profile?.role);
     const userSubscribesEvents =
@@ -156,7 +162,19 @@ export default function AdminPage() {
     const [startupFounders, setStartupFounders] = useState("");
     const [startupYear, setStartupYear] = useState("");
     const [startupWebsite, setStartupWebsite] = useState("");
+    const [startupInstagram, setStartupInstagram] = useState("");
+    const [startupLinkedinCompany, setStartupLinkedinCompany] = useState("");
+    const [startupFounderStory, setStartupFounderStory] = useState("");
+    const [startupBusinessCategory, setStartupBusinessCategory] = useState<string>(STARTUP_BUSINESS_CATEGORIES[0]);
     const [startupSending, setStartupSending] = useState(false);
+    const [startupLogo, setStartupLogo] = useState<File | null>(null);
+    const [startupLogoPreview, setStartupLogoPreview] = useState<string | null>(null);
+    const startupLogoRef = useRef<HTMLInputElement>(null);
+    const [startupLinkedUid, setStartupLinkedUid] = useState("");
+
+    useEffect(() => {
+        if (profile?.uid && startupLinkedUid === "") setStartupLinkedUid(profile.uid);
+    }, [profile?.uid, startupLinkedUid]);
 
     // Applications state
     const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
@@ -339,6 +357,8 @@ export default function AdminPage() {
                 m.joinDate,
                 m.linkedin ?? "",
                 m.bio ?? "",
+                m.graduationYear ?? "",
+                m.birthday ?? "",
             ]
                 .join(" ")
                 .toLowerCase();
@@ -348,7 +368,7 @@ export default function AdminPage() {
 
     const downloadRosterCsv = () => {
         const header =
-            "ID,Name,Email,Role,Role Label,Residency,Residency Label,Status,Standout Skill,Skills,Join Date,Projects,Uploads,Attendance,LinkedIn,Bio,Open To Mentorship\n";
+            "ID,Name,Email,Role,Role Label,Residency,Residency Label,Status,Standout Skill,Skills,Join Date,Projects,Uploads,Attendance,LinkedIn,Graduation Year,Birthday,Bio,Open To Mentorship\n";
         const rows = rosterSpreadsheetRows.map((m) =>
             [
                 csvEscape(m.id),
@@ -366,6 +386,8 @@ export default function AdminPage() {
                 csvEscape(String(m.uploads)),
                 csvEscape(m.attendance),
                 csvEscape(m.linkedin ?? ""),
+                csvEscape(m.graduationYear ?? ""),
+                csvEscape(m.birthday ?? ""),
                 csvEscape(m.bio ?? ""),
                 csvEscape(m.openToMentorship ? "yes" : "no"),
             ].join(",")
@@ -521,16 +543,66 @@ export default function AdminPage() {
     };
 
     // ── Startup Generation ──
+    const approvedMembersSorted = useMemo(
+        () =>
+            approvedMembers
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+        [approvedMembers]
+    );
+
+    const handleStartupLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !file.type.startsWith("image/")) {
+            setStartupLogo(null);
+            setStartupLogoPreview(null);
+            return;
+        }
+        setStartupLogo(file);
+        const reader = new FileReader();
+        reader.onloadend = () => setStartupLogoPreview(reader.result as string);
+        reader.readAsDataURL(file);
+    };
+
     const handleCreateStartup = async () => {
-        if (!startupName.trim() || !startupDesc.trim() || !startupFounders.trim() || !startupYear.trim()) return;
+        if (
+            !startupName.trim() ||
+            !startupDesc.trim() ||
+            !startupFounderStory.trim() ||
+            !startupFounders.trim() ||
+            !startupYear.trim() ||
+            !startupLinkedUid.trim() ||
+            !startupBusinessCategory.trim()
+        )
+            return;
+        if (!profile?.uid) return;
         setStartupSending(true);
         try {
+            let logoUrl: string | null = null;
+            if (startupLogo) {
+                const safe = startupLogo.name.replace(/[^\w.-]/g, "_").slice(0, 80);
+                const path = `startup-logos/${profile.uid}/${Date.now()}-admin-${safe}`;
+                const storageRef = ref(storage, path);
+                await uploadBytes(storageRef, startupLogo);
+                logoUrl = await getDownloadURL(storageRef);
+            }
+
+            const linked = members.find((m) => m.id === startupLinkedUid.trim());
             await addDoc(collection(db, "startups"), {
                 name: startupName.trim(),
-                description: startupDesc.trim(),
+                companyOverview: startupDesc.trim(),
+                founderStory: startupFounderStory.trim(),
                 founders: startupFounders.trim(),
                 foundedYear: startupYear.trim(),
+                businessCategory: startupBusinessCategory.trim(),
                 website: startupWebsite.trim() || null,
+                instagramUrl: startupInstagram.trim() || null,
+                linkedinCompanyUrl: startupLinkedinCompany.trim() || null,
+                logoUrl,
+                submittedByUid: startupLinkedUid.trim(),
+                submitterName: linked?.name?.trim() || profile.displayName?.trim() || "Member",
+                submitterGraduationYear: linked?.graduationYear ?? null,
+                submitterPhotoURL: linked?.photoURL?.trim() || profile.photoURL?.trim() || null,
                 createdAt: serverTimestamp(),
             });
 
@@ -549,9 +621,17 @@ export default function AdminPage() {
 
             setStartupName("");
             setStartupDesc("");
+            setStartupFounderStory("");
             setStartupFounders("");
             setStartupYear("");
             setStartupWebsite("");
+            setStartupInstagram("");
+            setStartupLinkedinCompany("");
+            setStartupBusinessCategory(STARTUP_BUSINESS_CATEGORIES[0]);
+            setStartupLogo(null);
+            setStartupLogoPreview(null);
+            if (startupLogoRef.current) startupLogoRef.current.value = "";
+            setStartupLinkedUid(profile.uid);
         } catch (err) {
             console.error("Startup creation error:", err);
         } finally {
@@ -789,6 +869,37 @@ export default function AdminPage() {
                                 </h3>
 
                                 <div className="space-y-5 relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">LINKED MEMBER (CODE OS)</label>
+                                        <select
+                                            value={startupLinkedUid}
+                                            onChange={(e) => setStartupLinkedUid(e.target.value)}
+                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
+                                        >
+                                            {(approvedMembersSorted.length > 0
+                                                ? approvedMembersSorted
+                                                : profile
+                                                  ? [
+                                                        {
+                                                            id: profile.uid,
+                                                            name: profile.displayName || "You",
+                                                            graduationYear: profile.graduationYear ?? null,
+                                                            photoURL: profile.photoURL ?? null,
+                                                        },
+                                                    ]
+                                                  : []
+                                            ).map((m) => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.name}
+                                                    {m.graduationYear ? ` · ’${m.graduationYear.slice(-2)}` : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-1">
+                                            Gallery shows this person and their graduation year from the roster.
+                                        </p>
+                                    </div>
+
                                     <div className="space-y-1.5 md:col-span-1">
                                         <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY DESIGNATION</label>
                                         <input type="text" value={startupName} onChange={(e) => setStartupName(e.target.value)} placeholder="e.g. OpenAI..." className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono uppercase transition-colors focus:outline-none" />
@@ -800,18 +911,94 @@ export default function AdminPage() {
                                     </div>
 
                                     <div className="space-y-1.5 md:col-span-1">
+                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">BUSINESS CATEGORY</label>
+                                        <select
+                                            value={startupBusinessCategory}
+                                            onChange={(e) => setStartupBusinessCategory(e.target.value)}
+                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
+                                        >
+                                            {STARTUP_BUSINESS_CATEGORIES.map((c) => (
+                                                <option key={c} value={c}>
+                                                    {c}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-1.5 md:col-span-1">
                                         <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">FOUNDING OPERATIVES</label>
                                         <input type="text" value={startupFounders} onChange={(e) => setStartupFounders(e.target.value)} placeholder="e.g. Alice & Bob..." className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono uppercase transition-colors focus:outline-none" />
                                     </div>
 
                                     <div className="space-y-1.5 md:col-span-1">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">EXTERNAL DOMAIN</label>
+                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY WEBSITE</label>
                                         <input type="url" value={startupWebsite} onChange={(e) => setStartupWebsite(e.target.value)} placeholder="https://..." className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none" />
                                     </div>
 
+                                    <div className="space-y-1.5 md:col-span-1">
+                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">INSTAGRAM</label>
+                                        <input
+                                            type="text"
+                                            value={startupInstagram}
+                                            onChange={(e) => setStartupInstagram(e.target.value)}
+                                            placeholder="@handle or URL"
+                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5 md:col-span-1">
+                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY LINKEDIN</label>
+                                        <input
+                                            type="text"
+                                            value={startupLinkedinCompany}
+                                            onChange={(e) => setStartupLinkedinCompany(e.target.value)}
+                                            placeholder="company/slug or URL"
+                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
+                                        />
+                                    </div>
+
                                     <div className="space-y-1.5 col-span-1 md:col-span-2">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">MISSION SYNOPSIS</label>
-                                        <textarea value={startupDesc} onChange={(e) => setStartupDesc(e.target.value)} placeholder="Describe the startup's purpose..." rows={3} className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none resize-none" />
+                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY LOGO (OPTIONAL)</label>
+                                        <input
+                                            ref={startupLogoRef}
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp"
+                                            onChange={handleStartupLogo}
+                                            className="hidden"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => startupLogoRef.current?.click()}
+                                            className={cn(
+                                                "w-full flex flex-col items-center justify-center gap-2 px-4 py-4 border border-dashed transition-colors hud-panel-sm",
+                                                startupLogo ? "border-primary/40 bg-primary/5" : "border-border/50 bg-background/40 hover:border-primary/50"
+                                            )}
+                                        >
+                                            {startupLogoPreview ? (
+                                                <img src={startupLogoPreview} alt="" className="h-16 w-16 object-contain border border-primary/30" />
+                                            ) : (
+                                                <Upload className="w-6 h-6 text-muted-foreground" />
+                                            )}
+                                            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                                                {startupLogo ? "Click to replace" : "PNG, JPG, WebP"}
+                                            </span>
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-1.5 col-span-1 md:col-span-2">
+                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY OVERVIEW</label>
+                                        <textarea value={startupDesc} onChange={(e) => setStartupDesc(e.target.value)} placeholder="Short overview for cards and detail header…" rows={3} className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none resize-none" />
+                                    </div>
+
+                                    <div className="space-y-1.5 col-span-1 md:col-span-2">
+                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">FOUNDER STORY</label>
+                                        <textarea
+                                            value={startupFounderStory}
+                                            onChange={(e) => setStartupFounderStory(e.target.value)}
+                                            placeholder="Why you started, milestones, vision…"
+                                            rows={5}
+                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none resize-none"
+                                        />
                                     </div>
 
                                     <div className="col-span-1 md:col-span-2 pt-2 flex items-center justify-between">
@@ -820,7 +1007,16 @@ export default function AdminPage() {
                                         </p>
                                         <button
                                             onClick={handleCreateStartup}
-                                            disabled={startupSending || !startupName.trim() || !startupDesc.trim()}
+                                            disabled={
+                                                startupSending ||
+                                                !startupName.trim() ||
+                                                !startupDesc.trim() ||
+                                                !startupFounderStory.trim() ||
+                                                !startupFounders.trim() ||
+                                                !startupYear.trim() ||
+                                                !startupLinkedUid.trim() ||
+                                                !startupBusinessCategory.trim()
+                                            }
                                             className="hud-panel bg-primary text-primary-foreground px-8 py-3.5 text-xs font-mono font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border disabled:opacity-50 flex items-center gap-3"
                                         >
                                             {startupSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -841,15 +1037,28 @@ export default function AdminPage() {
                                 ) : (
                                     <div className="space-y-3 relative z-10">
                                         {startups.map(startup => (
-                                            <div key={startup.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 hud-panel-sm bg-background/50 border border-border/40 hover:border-primary/40 transition-colors">
-                                                <div>
+                                            <div key={startup.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hud-panel-sm bg-background/50 border border-border/40 hover:border-primary/40 transition-colors">
+                                                <div className="flex min-w-0 flex-1 items-start gap-3">
+                                                    {startup.logoUrl ? (
+                                                        <img src={startup.logoUrl} alt="" className="h-10 w-10 shrink-0 border border-border/50 object-contain" />
+                                                    ) : null}
+                                                    <div className="min-w-0">
                                                     <p className="font-bold font-mono tracking-tight uppercase text-sm">
                                                         {startup.name}
-                                                        <span className="text-muted-foreground ml-2">[{startup.foundedYear}]</span>
+                                                        <span className="text-muted-foreground ml-2">
+                                                            [{startup.foundedYear}] · {startup.businessCategory}
+                                                        </span>
                                                     </p>
-                                                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mt-0.5">
-                                                        FOUNDERS: <span className="text-foreground">{startup.founders}</span>
-                                                    </p>
+                                                        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mt-0.5">
+                                                            FOUNDERS: <span className="text-foreground">{startup.founders}</span>
+                                                        </p>
+                                                        {(startup.submitterName || startup.submitterGraduationYear) && (
+                                                            <p className="text-[9px] font-mono text-primary/70 uppercase tracking-widest mt-1">
+                                                                {startup.submitterName}
+                                                                {startup.submitterGraduationYear ? ` · Class of ${startup.submitterGraduationYear}` : ""}
+                                                            </p>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
@@ -1113,7 +1322,7 @@ export default function AdminPage() {
                             ) : (
                                 <div className="hud-panel bg-card/40 border border-border/40 p-2 sm:p-4 scanlines overflow-hidden">
                                     <div className="overflow-x-auto custom-scroll -mx-1 px-1 max-h-[min(70vh,720px)] overflow-y-auto">
-                                        <table className="w-full text-left border-collapse min-w-[1100px]">
+                                        <table className="w-full text-left border-collapse min-w-[1500px]">
                                             <thead className="sticky top-0 z-[1] bg-card/95 backdrop-blur-sm border-b border-border/50">
                                                 <tr className="text-[9px] font-mono font-bold uppercase tracking-widest text-muted-foreground">
                                                     <th className="py-2.5 pr-3 pl-1 whitespace-nowrap">Name</th>
@@ -1127,19 +1336,30 @@ export default function AdminPage() {
                                                     <th className="py-2.5 pr-2 text-right tabular-nums whitespace-nowrap">Proj</th>
                                                     <th className="py-2.5 pr-2 text-right tabular-nums whitespace-nowrap">Up</th>
                                                     <th className="py-2.5 pr-2 whitespace-nowrap">Attend</th>
-                                                    <th className="py-2.5 pr-1 whitespace-nowrap">LinkedIn</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">LinkedIn</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">Grad</th>
+                                                    <th className="py-2.5 pr-3 whitespace-nowrap">Birth</th>
+                                                    <th className="py-2.5 pr-3 min-w-[100px]">Bio</th>
+                                                    <th className="py-2.5 pr-1 whitespace-nowrap">Mentor</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {rosterSpreadsheetRows.map((member, i) => {
-                                                    const canEditRole =
-                                                        member.status !== "pending" && member.status !== "rejected";
+                                                    const canEditRoleResidency =
+                                                        userIsPresident ||
+                                                        (member.status !== "pending" && member.status !== "rejected");
                                                     const statusClass =
                                                         member.status === "pending"
                                                             ? "text-warning border-warning/40 bg-warning/10"
                                                             : member.status === "rejected"
                                                               ? "text-destructive border-destructive/40 bg-destructive/10"
-                                                              : "text-muted-foreground border-border/50 bg-background/40";
+                                                              : member.status === "removed"
+                                                                ? "text-muted-foreground border-border/60 bg-muted/20"
+                                                                : "text-muted-foreground border-border/50 bg-background/40";
+                                                    const rosterInputClass =
+                                                        "w-full min-w-0 text-[9px] font-mono uppercase tracking-tight px-2 py-1.5 hud-panel-sm bg-background/80 border border-border/50 text-foreground focus:outline-none focus:border-primary/50";
+                                                    const standoutDefault =
+                                                        member.standoutSkill === "—" ? "" : member.standoutSkill;
                                                     return (
                                                         <tr
                                                             key={member.id}
@@ -1148,26 +1368,100 @@ export default function AdminPage() {
                                                                 i % 2 === 0 ? "bg-background/20" : "bg-transparent"
                                                             )}
                                                         >
-                                                            <td className="py-2 pr-3 pl-1 align-top">
-                                                                <span className="font-bold text-foreground uppercase tracking-tight">
-                                                                    {member.name}
-                                                                </span>
+                                                            <td className="py-2 pr-3 pl-1 align-top max-w-[160px]">
+                                                                {userIsPresident ? (
+                                                                    <input
+                                                                        key={`nm-${member.id}-${member.name}`}
+                                                                        type="text"
+                                                                        defaultValue={member.name}
+                                                                        onBlur={async (e) => {
+                                                                            const v = e.target.value.trim();
+                                                                            if (!v || v === member.name.trim()) return;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    displayName: v,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Name update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className={rosterInputClass}
+                                                                    />
+                                                                ) : (
+                                                                    <span className="font-bold text-foreground uppercase tracking-tight">
+                                                                        {member.name}
+                                                                    </span>
+                                                                )}
                                                             </td>
-                                                            <td className="py-2 pr-3 align-top text-muted-foreground break-all max-w-[200px]">
-                                                                {member.email || "—"}
+                                                            <td className="py-2 pr-3 align-top break-all max-w-[200px]">
+                                                                {userIsPresident ? (
+                                                                    <input
+                                                                        key={`em-${member.id}-${member.email}`}
+                                                                        type="email"
+                                                                        defaultValue={member.email}
+                                                                        onBlur={async (e) => {
+                                                                            const v = e.target.value.trim();
+                                                                            if (v === (member.email || "").trim()) return;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    email: v,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Email update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className={rosterInputClass}
+                                                                    />
+                                                                ) : (
+                                                                    <span className="text-muted-foreground">
+                                                                        {member.email || "—"}
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                             <td className="py-2 pr-3 align-top whitespace-nowrap">
-                                                                <span
-                                                                    className={cn(
-                                                                        "inline-block px-2 py-0.5 border text-[9px] font-bold uppercase tracking-widest",
-                                                                        statusClass
-                                                                    )}
-                                                                >
-                                                                    {member.status}
-                                                                </span>
+                                                                {userIsPresident ? (
+                                                                    <select
+                                                                        value={
+                                                                            ROSTER_STATUS_OPTIONS.includes(
+                                                                                member.status as (typeof ROSTER_STATUS_OPTIONS)[number]
+                                                                            )
+                                                                                ? member.status
+                                                                                : "pending"
+                                                                        }
+                                                                        onChange={async (e) => {
+                                                                            const next = e.target.value;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    status: next,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Status update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className="max-w-[120px] text-[9px] font-mono font-bold uppercase tracking-widest px-2 py-1.5 hud-panel-sm bg-background/80 border border-border/50 text-foreground focus:outline-none focus:border-primary/50 cursor-pointer appearance-none"
+                                                                    >
+                                                                        {ROSTER_STATUS_OPTIONS.map((s) => (
+                                                                            <option key={s} value={s}>
+                                                                                {s}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <span
+                                                                        className={cn(
+                                                                            "inline-block px-2 py-0.5 border text-[9px] font-bold uppercase tracking-widest",
+                                                                            statusClass
+                                                                        )}
+                                                                    >
+                                                                        {member.status}
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                             <td className="py-2 pr-3 align-top whitespace-nowrap">
-                                                                {canEditRole ? (
+                                                                {canEditRoleResidency ? (
                                                                     <select
                                                                         value={member.role}
                                                                         onChange={async (e) => {
@@ -1196,7 +1490,7 @@ export default function AdminPage() {
                                                                 )}
                                                             </td>
                                                             <td className="py-2 pr-3 align-top whitespace-nowrap">
-                                                                {canEditRole ? (
+                                                                {canEditRoleResidency ? (
                                                                     <select
                                                                         value={member.residency}
                                                                         onChange={async (e) => {
@@ -1225,18 +1519,72 @@ export default function AdminPage() {
                                                                 )}
                                                             </td>
                                                             <td
-                                                                className="py-2 pr-3 align-top text-muted-foreground max-w-[120px] truncate"
+                                                                className={cn(
+                                                                    "py-2 pr-3 align-top max-w-[120px]",
+                                                                    userIsPresident ? "" : "text-muted-foreground truncate"
+                                                                )}
                                                                 title={member.standoutSkill}
                                                             >
-                                                                {member.standoutSkill}
+                                                                {userIsPresident ? (
+                                                                    <input
+                                                                        key={`so-${member.id}-${standoutDefault}`}
+                                                                        type="text"
+                                                                        defaultValue={standoutDefault}
+                                                                        onBlur={async (e) => {
+                                                                            const v = e.target.value.trim();
+                                                                            const prev = standoutDefault.trim();
+                                                                            if (v === prev) return;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    standoutSkill: v || "",
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Standout update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className={rosterInputClass}
+                                                                    />
+                                                                ) : (
+                                                                    member.standoutSkill
+                                                                )}
                                                             </td>
                                                             <td
-                                                                className="py-2 pr-3 align-top text-muted-foreground text-[9px] leading-snug max-w-[220px]"
+                                                                className={cn(
+                                                                    "py-2 pr-3 align-top text-[9px] leading-snug max-w-[220px]",
+                                                                    userIsPresident ? "" : "text-muted-foreground"
+                                                                )}
                                                                 title={(member.skills || []).join(", ")}
                                                             >
-                                                                {(member.skills || []).length > 0
-                                                                    ? (member.skills || []).join(", ")
-                                                                    : "—"}
+                                                                {userIsPresident ? (
+                                                                    <textarea
+                                                                        key={`sk-${member.id}-${(member.skills || []).join("|")}`}
+                                                                        rows={2}
+                                                                        defaultValue={(member.skills || []).join(", ")}
+                                                                        onBlur={async (e) => {
+                                                                            const parts = e.target.value
+                                                                                .split(/[,;\n]+/)
+                                                                                .map((s) => s.trim())
+                                                                                .filter(Boolean);
+                                                                            const norm = (a: string[]) =>
+                                                                                [...a].map((s) => s.trim()).filter(Boolean).sort();
+                                                                            if (norm(parts).join("|") === norm(member.skills || []).join("|")) return;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    skills: parts,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Skills update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className={cn(rosterInputClass, "resize-y min-h-[2.25rem] normal-case")}
+                                                                    />
+                                                                ) : (member.skills || []).length > 0 ? (
+                                                                    (member.skills || []).join(", ")
+                                                                ) : (
+                                                                    "—"
+                                                                )}
                                                             </td>
                                                             <td className="py-2 pr-3 align-top text-muted-foreground whitespace-nowrap">
                                                                 {member.joinDate || "—"}
@@ -1250,8 +1598,41 @@ export default function AdminPage() {
                                                             <td className="py-2 pr-2 align-top text-muted-foreground whitespace-nowrap">
                                                                 {member.attendance}
                                                             </td>
-                                                            <td className="py-2 pr-1 align-top">
-                                                                {member.linkedin ? (
+                                                            <td className="py-2 pr-3 align-top max-w-[140px]">
+                                                                {userIsPresident ? (
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <input
+                                                                            key={`li-${member.id}-${member.linkedin ?? ""}`}
+                                                                            type="url"
+                                                                            placeholder="https://…"
+                                                                            defaultValue={member.linkedin ?? ""}
+                                                                            onBlur={async (e) => {
+                                                                                const v = e.target.value.trim();
+                                                                                const cur = (member.linkedin ?? "").trim();
+                                                                                if (v === cur) return;
+                                                                                try {
+                                                                                    await updateDoc(doc(db, "users", member.id), {
+                                                                                        linkedin: v || null,
+                                                                                        updatedAt: serverTimestamp(),
+                                                                                    });
+                                                                                } catch (err) {
+                                                                                    console.error("LinkedIn update error:", err);
+                                                                                }
+                                                                            }}
+                                                                            className={rosterInputClass}
+                                                                        />
+                                                                        {member.linkedin ? (
+                                                                            <a
+                                                                                href={member.linkedin}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="text-primary hover:underline text-[9px] uppercase tracking-tight truncate"
+                                                                            >
+                                                                                Open
+                                                                            </a>
+                                                                        ) : null}
+                                                                    </div>
+                                                                ) : member.linkedin ? (
                                                                     <a
                                                                         href={member.linkedin}
                                                                         target="_blank"
@@ -1262,6 +1643,122 @@ export default function AdminPage() {
                                                                     </a>
                                                                 ) : (
                                                                     <span className="text-muted-foreground">—</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2 pr-3 align-top w-[88px]">
+                                                                {userIsPresident ? (
+                                                                    <input
+                                                                        key={`gy-${member.id}-${member.graduationYear ?? ""}`}
+                                                                        type="text"
+                                                                        inputMode="numeric"
+                                                                        maxLength={4}
+                                                                        placeholder="YYYY"
+                                                                        defaultValue={member.graduationYear ?? ""}
+                                                                        onBlur={async (e) => {
+                                                                            const v = e.target.value.trim();
+                                                                            const cur = member.graduationYear ?? "";
+                                                                            if (v === cur) return;
+                                                                            if (v !== "" && !/^\d{4}$/.test(v)) return;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    graduationYear: v === "" ? null : v,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Grad year update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className={rosterInputClass}
+                                                                    />
+                                                                ) : (
+                                                                    <span className="text-muted-foreground tabular-nums">
+                                                                        {member.graduationYear ?? "—"}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2 pr-3 align-top w-[132px]">
+                                                                {userIsPresident ? (
+                                                                    <input
+                                                                        key={`bd-${member.id}-${member.birthday ?? ""}`}
+                                                                        type="date"
+                                                                        defaultValue={member.birthday ?? ""}
+                                                                        onBlur={async (e) => {
+                                                                            const v = e.target.value.trim();
+                                                                            const cur = member.birthday ?? "";
+                                                                            if (v === cur) return;
+                                                                            if (v !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    birthday: v === "" ? null : v,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Birthday update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className={rosterInputClass}
+                                                                    />
+                                                                ) : (
+                                                                    <span className="text-muted-foreground whitespace-nowrap">
+                                                                        {member.birthday ?? "—"}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2 pr-3 align-top max-w-[140px]">
+                                                                {userIsPresident ? (
+                                                                    <textarea
+                                                                        key={`bio-${member.id}-${member.bio ?? ""}`}
+                                                                        rows={2}
+                                                                        defaultValue={member.bio ?? ""}
+                                                                        onBlur={async (e) => {
+                                                                            const v = e.target.value.trim();
+                                                                            const cur = (member.bio ?? "").trim();
+                                                                            if (v === cur) return;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    bio: v || null,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Bio update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className={cn(rosterInputClass, "resize-y min-h-[2.25rem] normal-case")}
+                                                                    />
+                                                                ) : (
+                                                                    <span
+                                                                        className="text-muted-foreground text-[9px] leading-snug line-clamp-3"
+                                                                        title={member.bio ?? undefined}
+                                                                    >
+                                                                        {member.bio?.trim() ? member.bio : "—"}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2 pr-1 align-top whitespace-nowrap">
+                                                                {userIsPresident ? (
+                                                                    <select
+                                                                        value={member.openToMentorship ? "yes" : "no"}
+                                                                        onChange={async (e) => {
+                                                                            const next = e.target.value === "yes";
+                                                                            if (next === member.openToMentorship) return;
+                                                                            try {
+                                                                                await updateDoc(doc(db, "users", member.id), {
+                                                                                    openToMentorship: next,
+                                                                                    updatedAt: serverTimestamp(),
+                                                                                });
+                                                                            } catch (err) {
+                                                                                console.error("Mentorship update error:", err);
+                                                                            }
+                                                                        }}
+                                                                        className="text-[9px] font-mono font-bold uppercase tracking-widest px-2 py-1.5 hud-panel-sm bg-background/80 border border-border/50 text-foreground focus:outline-none focus:border-primary/50 cursor-pointer appearance-none"
+                                                                    >
+                                                                        <option value="no">No</option>
+                                                                        <option value="yes">Yes</option>
+                                                                    </select>
+                                                                ) : (
+                                                                    <span className="text-muted-foreground">
+                                                                        {member.openToMentorship ? "Yes" : "No"}
+                                                                    </span>
                                                                 )}
                                                             </td>
                                                         </tr>

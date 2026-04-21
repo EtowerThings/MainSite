@@ -36,6 +36,7 @@ export default function OnboardingPage() {
     // Form state
     const [displayName, setDisplayName] = useState(profile?.displayName || "");
     const [birthday, setBirthday] = useState("");
+    const [graduationYear, setGraduationYear] = useState(profile?.graduationYear ?? "");
     const [bio, setBio] = useState("");
     const [funFact, setFunFact] = useState("");
     const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
@@ -113,6 +114,7 @@ export default function OnboardingPage() {
                 email: currentUser.email || null,
                 displayName,
                 birthday: birthday || null,
+                graduationYear: graduationYear.trim() || null,
                 photoURL: photoURL || currentUser.photoURL || null,
                 resumeURL,
                 role: "member",
@@ -178,9 +180,18 @@ export default function OnboardingPage() {
     );
 
     // Step validation
+    const graduationYearOk =
+        /^\d{4}$/.test(graduationYear.trim()) &&
+        Number(graduationYear.trim()) >= 2000 &&
+        Number(graduationYear.trim()) <= 2040;
+
     const stepValid = [
-        // Step 0: Name, Birthday, Bio & Fun Fact
-        displayName.trim().length > 0 && birthday.trim().length > 0 && bio.trim().length > 0 && funFact.trim().length > 0,
+        // Step 0: Name, Birthday, graduation year, Bio & Fun Fact
+        displayName.trim().length > 0 &&
+            birthday.trim().length > 0 &&
+            graduationYearOk &&
+            bio.trim().length > 0 &&
+            funFact.trim().length > 0,
         // Step 1: Select skills (at least 1)
         selectedSkills.length >= 1,
         // Step 2: Pick standout skill
@@ -207,6 +218,19 @@ export default function OnboardingPage() {
                     <div>
                         <label className="text-xs font-mono text-muted-foreground uppercase mb-1.5 block">Birthday</label>
                         <input type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} className="w-full px-4 py-3 hud-panel-sm bg-background/50 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none" />
+                    </div>
+                    <div>
+                        <label className="text-xs font-mono text-muted-foreground uppercase mb-1.5 block">Babson graduation year</label>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={4}
+                            value={graduationYear}
+                            onChange={(e) => setGraduationYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                            placeholder="e.g. 2027"
+                            className="w-full px-4 py-3 hud-panel-sm bg-background/50 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
+                        />
+                        <p className="text-[10px] font-mono text-muted-foreground mt-1.5 uppercase tracking-wider">Four-digit year you expect to graduate (undergrad or grad).</p>
                     </div>
                     <div>
                         <label className="text-xs font-mono text-muted-foreground uppercase mb-1.5 block">Short Bio</label>
@@ -393,6 +417,9 @@ export default function OnboardingPage() {
                             <p className="text-lg font-black tracking-tight truncate uppercase">{displayName}</p>
                             <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mt-1 truncate">{bio}</p>
                             {birthday && <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mt-0.5">DOB: {new Date(birthday).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>}
+                            {graduationYearOk && (
+                                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mt-0.5">Class of {graduationYear.trim()}</p>
+                            )}
                             {funFact && <p className="text-[10px] font-mono text-primary/80 italic mt-1">Fun fact: {funFact}</p>}
                         </div>
                     </div>

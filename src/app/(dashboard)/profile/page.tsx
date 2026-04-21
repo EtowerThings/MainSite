@@ -206,6 +206,11 @@ export default function ProfilePage() {
                         <span className="text-[10px] font-mono font-bold px-3 py-1 border hud-panel-sm border-border/60 text-muted-foreground uppercase tracking-widest">
                             {getResidencyLabel(profile?.residency ?? "resident")}
                         </span>
+                        {profile?.graduationYear && (
+                            <span className="text-[10px] font-mono font-bold px-3 py-1 border hud-panel-sm border-border/60 text-muted-foreground uppercase tracking-widest">
+                                Class of {profile.graduationYear}
+                            </span>
+                        )}
                     </div>
 
                     {/* Acquired Skills */}

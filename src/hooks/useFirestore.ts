@@ -17,6 +17,7 @@ import {
     serverTimestamp,
     arrayUnion,
     arrayRemove,
+    deleteField,
     type QueryConstraint,
     type DocumentData,
     Timestamp,
@@ -193,6 +194,25 @@ export function getAttendanceIdsForOccurrence(event: EventItem, occurrenceYmd: s
 }
 
 /** Count distinct occurrence sessions a member was marked present (admin). */
+function normalizeHousingHostUidsFromFirestore(raw: Record<string, unknown>): string[] {
+    const rawU = raw.housingHostUids;
+    const fromArr = Array.isArray(rawU)
+        ? rawU.map((x) => String(x).trim()).filter(Boolean)
+        : [];
+    const legacy =
+        typeof raw.housingHostUid === "string" && raw.housingHostUid.trim()
+            ? raw.housingHostUid.trim()
+            : "";
+    const merged: string[] = [...fromArr];
+    if (legacy && !merged.includes(legacy)) merged.unshift(legacy);
+    return [...new Set(merged)];
+}
+
+function normalizeHousingHostUidsForWrite(uids: string[] | undefined | null): string[] {
+    if (!uids?.length) return [];
+    return [...new Set(uids.map((u) => String(u).trim()).filter(Boolean))];
+}
+
 export function countMemberAttendanceOccurrences(events: EventItem[], memberId: string): number {
     let n = 0;
     for (const e of events) {
@@ -232,8 +252,8 @@ export interface EventItem {
     tags: string[];
     featured: boolean;
     createdBy: string;
-    /** Set by admin / VP Events for housing host bonus (+4) and host no-show (−3). */
-    housingHostUid: string | null;
+    /** Set by admin / VP Events for housing host bonus (+4 each) and host no-show (−3) when absent on a roll. */
+    housingHostUids: string[];
     createdAt: string;
     /** When set, UI expands to one row per weekly occurrence (single Firestore doc). */
     recurrence: EventRecurrence | null;
@@ -273,10 +293,7 @@ export function useEvents(enabled: boolean = true) {
             tags: raw.tags || [],
             featured: raw.featured || false,
             createdBy: raw.createdBy || "",
-            housingHostUid:
-                typeof raw.housingHostUid === "string" && raw.housingHostUid.trim()
-                    ? raw.housingHostUid.trim()
-                    : null,
+            housingHostUids: normalizeHousingHostUidsFromFirestore(raw as Record<string, unknown>),
             createdAt: formatTimestamp(raw.createdAt),
             recurrence:
                 raw.recurrence?.interval === "weekly" && typeof raw.recurrence?.count === "number"
@@ -288,10 +305,10 @@ export function useEvents(enabled: boolean = true) {
     );
 
     const createEvent = async (
-        event: Omit<EventItem, "id" | "createdAt" | "attendees" | "attendance" | "attendanceByDate" | "housingHostUid"> & {
+        event: Omit<EventItem, "id" | "createdAt" | "attendees" | "attendance" | "attendanceByDate" | "housingHostUids"> & {
             startTime?: string;
             endTime?: string;
-            housingHostUid?: string | null;
+            housingHostUids?: string[];
         }
     ) => {
         const startTime = (event as { startTime?: string }).startTime ?? "";
@@ -313,10 +330,7 @@ export function useEvents(enabled: boolean = true) {
             tags: event.tags ?? [],
             featured: event.featured ?? false,
             createdBy: event.createdBy ?? "",
-            housingHostUid:
-                event.housingHostUid && String(event.housingHostUid).trim()
-                    ? String(event.housingHostUid).trim()
-                    : null,
+            housingHostUids: normalizeHousingHostUidsForWrite(event.housingHostUids),
             attendees: [],
             attendance: [],
             attendanceByDate: {},
@@ -362,7 +376,7 @@ export function useEvents(enabled: boolean = true) {
                 | "tags"
                 | "featured"
                 | "recurrence"
-                | "housingHostUid"
+                | "housingHostUids"
             >
         > & {
             startTime?: string;
@@ -384,9 +398,9 @@ export function useEvents(enabled: boolean = true) {
         if (updates.maxAttendees !== undefined) payload.maxAttendees = updates.maxAttendees;
         if (updates.tags !== undefined) payload.tags = updates.tags;
         if (updates.featured !== undefined) payload.featured = updates.featured;
-        if (updates.housingHostUid !== undefined) {
-            const h = updates.housingHostUid;
-            payload.housingHostUid = h && String(h).trim() ? String(h).trim() : null;
+        if (updates.housingHostUids !== undefined) {
+            payload.housingHostUids = normalizeHousingHostUidsForWrite(updates.housingHostUids);
+            payload.housingHostUid = deleteField();
         }
         if (updates.recurrence !== undefined) {
             payload.recurrence =
@@ -427,6 +441,8 @@ export interface MemberItem {
     openToMentorship: boolean;
     /** `YYYY-MM-DD` from onboarding, or null. */
     birthday: string | null;
+    /** Babson graduation year (e.g. "2027"). */
+    graduationYear: string | null;
 }
 
 export function useMembers(enabled: boolean = true) {
@@ -460,6 +476,11 @@ export function useMembers(enabled: boolean = true) {
                 const b = raw.birthday;
                 if (typeof b === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.trim())) return b.trim();
                 if (b instanceof Timestamp) return rawDateToYyyyMmDd(b);
+                return null;
+            })(),
+            graduationYear: (() => {
+                const g = raw.graduationYear;
+                if (typeof g === "string" && /^\d{4}$/.test(g.trim())) return g.trim();
                 return null;
             })(),
         };
@@ -766,10 +787,25 @@ export function useActionItems(enabled: boolean = true) {
 export interface StartupItem {
     id: string;
     name: string;
-    description: string;
+    /** Short company overview for gallery cards and modal. */
+    companyOverview: string;
+    /** Longer narrative: why the company exists, problem, traction, etc. */
+    founderStory: string;
     founders: string;
     foundedYear: string;
+    businessCategory: string;
     website: string | null;
+    instagramUrl: string | null;
+    linkedinCompanyUrl: string | null;
+    /** Company logo (Firebase Storage URL). */
+    logoUrl: string | null;
+    /** CODE member this listing is attributed to (`users` doc id). */
+    submittedByUid: string | null;
+    submitterName: string | null;
+    /** Babson class year of linked member at submission time. */
+    submitterGraduationYear: string | null;
+    /** Headshot of linked CODE member at submission time. */
+    submitterPhotoURL: string | null;
     createdAt: string;
 }
 
@@ -777,15 +813,45 @@ export function useStartups(enabled: boolean = true) {
     return useCollection<StartupItem>(
         "startups",
         [orderBy("createdAt", "desc")],
-        (raw, id) => ({
-            id,
-            name: raw.name || "Unknown Startup",
-            description: raw.description || "",
-            founders: raw.founders || "",
-            foundedYear: raw.foundedYear || "",
-            website: raw.website || null,
-            createdAt: formatTimestamp(raw.createdAt),
-        }),
+        (raw, id) => {
+            const overview =
+                typeof raw.companyOverview === "string" && raw.companyOverview.trim()
+                    ? raw.companyOverview.trim()
+                    : typeof raw.description === "string"
+                      ? raw.description.trim()
+                      : "";
+            return {
+                id,
+                name: raw.name || "Unknown Startup",
+                companyOverview: overview,
+                founderStory: typeof raw.founderStory === "string" ? raw.founderStory.trim() : "",
+                founders: raw.founders || "",
+                foundedYear: raw.foundedYear || "",
+                businessCategory:
+                    typeof raw.businessCategory === "string" && raw.businessCategory.trim()
+                        ? raw.businessCategory.trim()
+                        : "Other",
+                website: typeof raw.website === "string" && raw.website.trim() ? raw.website.trim() : null,
+                instagramUrl:
+                    typeof raw.instagramUrl === "string" && raw.instagramUrl.trim() ? raw.instagramUrl.trim() : null,
+                linkedinCompanyUrl:
+                    typeof raw.linkedinCompanyUrl === "string" && raw.linkedinCompanyUrl.trim()
+                        ? raw.linkedinCompanyUrl.trim()
+                        : null,
+                logoUrl: typeof raw.logoUrl === "string" && raw.logoUrl.trim() ? raw.logoUrl.trim() : null,
+                submittedByUid: typeof raw.submittedByUid === "string" && raw.submittedByUid.trim() ? raw.submittedByUid.trim() : null,
+                submitterName: typeof raw.submitterName === "string" && raw.submitterName.trim() ? raw.submitterName.trim() : null,
+                submitterGraduationYear:
+                    typeof raw.submitterGraduationYear === "string" && /^\d{4}$/.test(raw.submitterGraduationYear.trim())
+                        ? raw.submitterGraduationYear.trim()
+                        : null,
+                submitterPhotoURL:
+                    typeof raw.submitterPhotoURL === "string" && raw.submitterPhotoURL.trim()
+                        ? raw.submitterPhotoURL.trim()
+                        : null,
+                createdAt: formatTimestamp(raw.createdAt),
+            };
+        },
         enabled
     );
 }

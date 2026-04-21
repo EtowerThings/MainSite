@@ -57,6 +57,8 @@ interface UserProfile {
     onboarded?: boolean;
     openToMentorship?: boolean;
     linkedin?: string | null;
+    /** Babson graduation year (e.g. "2027"), from onboarding. */
+    graduationYear?: string | null;
     engagementMetrics?: EngagementMetrics;
 }
 
@@ -106,6 +108,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             onboarded: data.onboarded === true,
                             openToMentorship: data.openToMentorship || false,
                             linkedin: data.linkedin || data.alumni?.linkedinUrl || null,
+                            graduationYear:
+                                typeof data.graduationYear === "string" && data.graduationYear.trim()
+                                    ? data.graduationYear.trim()
+                                    : null,
                             engagementMetrics: metrics ? {
                                 attendanceRate: metrics.attendanceRate ?? 0,
                                 projectsCompleted: metrics.projectsCompleted ?? (Array.isArray(data.projects) ? data.projects.length : 0),
@@ -146,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             onboarded: false,
                             openToMentorship: false,
                             linkedin: null,
+                            graduationYear: null,
                             engagementMetrics: undefined,
                         });
                         setNeedsOnboarding(true);
@@ -163,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         skills: [],
                         openToMentorship: false,
                         linkedin: null,
+                        graduationYear: null,
                         engagementMetrics: undefined,
                     });
                 }
@@ -218,6 +226,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     onboarded: data.onboarded === true,
                     openToMentorship: data.openToMentorship || false,
                     linkedin: data.linkedin || data.alumni?.linkedinUrl || null,
+                    graduationYear:
+                        typeof data.graduationYear === "string" && data.graduationYear.trim()
+                            ? data.graduationYear.trim()
+                            : null,
                     engagementMetrics: metrics
                         ? {
                               attendanceRate: metrics.attendanceRate ?? 0,

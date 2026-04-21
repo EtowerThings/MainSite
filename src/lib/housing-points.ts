@@ -24,7 +24,7 @@ export type HousingPointsBreakdown = {
     role: string;
     /** Sum of +1 present / −1 absent / −3 host absent on past rolls. */
     attendanceSessionPoints: number;
-    /** +4 per event this member created (host). */
+    /** +4 per event this member is listed as a housing host. */
     hostEventBonus: number;
     /** Executive +3 or Officer +2 from current role (not stacked). */
     leadershipBonus: number;
@@ -76,18 +76,18 @@ function leadershipPointsForRole(role: string): number {
     return 0;
 }
 
-/** Official host for housing scoring (set by admin / VP Events on the event). */
-export function getEventHousingHostUid(event: EventItem): string {
-    return (event.housingHostUid || "").trim();
+/** Official housing hosts for scoring (set by admin / VP Events on the event). */
+export function getEventHousingHostUids(event: EventItem): string[] {
+    return event.housingHostUids ?? [];
 }
 
 /**
  * Housing points for roster planning (admin-only UI).
  *
  * Attendance: for each past occurrence where a roll was saved, each approved non-alumni member
- * gets +1 if marked present, −1 if absent, or −3 if they created the event and were absent (host no-show).
+ * gets +1 if marked present, −1 if absent, or −3 if they are an assigned host and were absent (host no-show).
  *
- * Host bonus: +4 per event where `housingHostUid` is this member’s uid (assigned by admin / VP Events).
+ * Host bonus: +4 per event for each listed host uid (assigned by admin / VP Events).
  *
  * Role: Executive +3 or Officer +2 (whichever applies to current role).
  *
@@ -120,10 +120,11 @@ export function computeHousingPointsBreakdowns(
     const eligibleIds = new Set(members.filter(isApprovedNonAlumni).map((m) => m.id));
 
     for (const event of events) {
-        const hostId = getEventHousingHostUid(event);
-        if (hostId && byId.has(hostId)) {
-            const row = byId.get(hostId)!;
-            row.hostEventBonus += 4;
+        const hostIds = getEventHousingHostUids(event);
+        for (const hostId of hostIds) {
+            if (hostId && byId.has(hostId)) {
+                byId.get(hostId)!.hostEventBonus += 4;
+            }
         }
 
         const rows = expandEventOccurrences(event);
@@ -145,7 +146,7 @@ export function computeHousingPointsBreakdowns(
                     continue;
                 }
 
-                const isHost = hostId === uid;
+                const isHost = hostIds.includes(uid);
                 if (isHost) {
                     rec.attendanceSessionPoints += -3;
                 } else {
@@ -171,11 +172,11 @@ export function computeHousingPointsBreakdowns(
 
 export const HOUSING_POINTS_RULES_TEXT = [
     "Higher housing points improve your likelihood of getting a single.",
-    "Attendance (past sessions where a roll was saved): +1 if marked present; −1 if not marked present; −3 if you are the assigned event host and did not show as present.",
+    "Attendance (past sessions where a roll was saved): +1 if marked present; −1 if not marked present; −3 if you are an assigned event host and did not show as present.",
     "Community meetings and club events both use this +1 / −1 session rule (same point value as in the club handbook table).",
-    "Host an event: +4 when you are set as the event host (Admin or VP Events sets this on each event).",
+    "Host an event: +4 when you are listed as an event host (Admin or VP Events can assign multiple hosts per event).",
     "Officers (Marketing, Events, Finance, Recruitment, Outreach, functional VPs including VP Recruitment and VP Outreach): +2.",
     "Executive (President, Vice President, Community Manager): +3.",
     "Residency: +2 per estimated semester since join for everyone except associates and alumni (non-associates count as residents for this purpose).",
-    "Handbook reference — No show (meeting): −1; No show (hosting an event): −3 when you are the assigned host and absent on the roll.",
+    "Handbook reference — No show (meeting): −1; No show (hosting an event): −3 when you are an assigned host and absent on the roll.",
 ] as const;

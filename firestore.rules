@@ -102,7 +102,11 @@ service cloud.firestore {
 
     match /startups/{startupId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isAdmin() || (
+        isSignedIn() && userExists() &&
+        request.resource.data.submittedByUid == request.auth.uid
+      );
+      allow update, delete: if isAdmin();
     }
 
     /** Club-wide display settings (fiscal term label for budgets, dashboard, etc.). */
