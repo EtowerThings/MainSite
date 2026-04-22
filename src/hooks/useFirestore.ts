@@ -809,49 +809,87 @@ export interface StartupItem {
     createdAt: string;
 }
 
+/** Parse Firestore startup document (shared by live collection + edit page load). */
+export function parseStartupDocument(raw: DocumentData, id: string): StartupItem {
+    const overview =
+        typeof raw.companyOverview === "string" && raw.companyOverview.trim()
+            ? raw.companyOverview.trim()
+            : typeof raw.description === "string"
+              ? raw.description.trim()
+              : "";
+    return {
+        id,
+        name: raw.name || "Unknown Startup",
+        companyOverview: overview,
+        founderStory: typeof raw.founderStory === "string" ? raw.founderStory.trim() : "",
+        founders: raw.founders || "",
+        foundedYear: raw.foundedYear || "",
+        businessCategory:
+            typeof raw.businessCategory === "string" && raw.businessCategory.trim()
+                ? raw.businessCategory.trim()
+                : "Other",
+        website: typeof raw.website === "string" && raw.website.trim() ? raw.website.trim() : null,
+        instagramUrl:
+            typeof raw.instagramUrl === "string" && raw.instagramUrl.trim() ? raw.instagramUrl.trim() : null,
+        linkedinCompanyUrl:
+            typeof raw.linkedinCompanyUrl === "string" && raw.linkedinCompanyUrl.trim()
+                ? raw.linkedinCompanyUrl.trim()
+                : null,
+        logoUrl: typeof raw.logoUrl === "string" && raw.logoUrl.trim() ? raw.logoUrl.trim() : null,
+        submittedByUid: typeof raw.submittedByUid === "string" && raw.submittedByUid.trim() ? raw.submittedByUid.trim() : null,
+        submitterName: typeof raw.submitterName === "string" && raw.submitterName.trim() ? raw.submitterName.trim() : null,
+        submitterGraduationYear:
+            typeof raw.submitterGraduationYear === "string" && /^\d{4}$/.test(raw.submitterGraduationYear.trim())
+                ? raw.submitterGraduationYear.trim()
+                : null,
+        submitterPhotoURL:
+            typeof raw.submitterPhotoURL === "string" && raw.submitterPhotoURL.trim()
+                ? raw.submitterPhotoURL.trim()
+                : null,
+        createdAt: formatTimestamp(raw.createdAt),
+    };
+}
+
+export type StartupUpdatePayload = Partial<
+    Pick<
+        StartupItem,
+        | "name"
+        | "companyOverview"
+        | "founderStory"
+        | "founders"
+        | "foundedYear"
+        | "businessCategory"
+        | "website"
+        | "instagramUrl"
+        | "linkedinCompanyUrl"
+        | "logoUrl"
+        | "submitterName"
+        | "submitterGraduationYear"
+        | "submitterPhotoURL"
+    >
+>;
+
+export async function updateStartup(startupId: string, patch: StartupUpdatePayload) {
+    const cleaned: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) {
+        if (v !== undefined) cleaned[k] = v;
+    }
+    if (Object.keys(cleaned).length === 0) return;
+    await updateDoc(doc(db, "startups", startupId), {
+        ...cleaned,
+        updatedAt: serverTimestamp(),
+    });
+}
+
+export async function deleteStartup(startupId: string) {
+    await deleteDoc(doc(db, "startups", startupId));
+}
+
 export function useStartups(enabled: boolean = true) {
     return useCollection<StartupItem>(
         "startups",
         [orderBy("createdAt", "desc")],
-        (raw, id) => {
-            const overview =
-                typeof raw.companyOverview === "string" && raw.companyOverview.trim()
-                    ? raw.companyOverview.trim()
-                    : typeof raw.description === "string"
-                      ? raw.description.trim()
-                      : "";
-            return {
-                id,
-                name: raw.name || "Unknown Startup",
-                companyOverview: overview,
-                founderStory: typeof raw.founderStory === "string" ? raw.founderStory.trim() : "",
-                founders: raw.founders || "",
-                foundedYear: raw.foundedYear || "",
-                businessCategory:
-                    typeof raw.businessCategory === "string" && raw.businessCategory.trim()
-                        ? raw.businessCategory.trim()
-                        : "Other",
-                website: typeof raw.website === "string" && raw.website.trim() ? raw.website.trim() : null,
-                instagramUrl:
-                    typeof raw.instagramUrl === "string" && raw.instagramUrl.trim() ? raw.instagramUrl.trim() : null,
-                linkedinCompanyUrl:
-                    typeof raw.linkedinCompanyUrl === "string" && raw.linkedinCompanyUrl.trim()
-                        ? raw.linkedinCompanyUrl.trim()
-                        : null,
-                logoUrl: typeof raw.logoUrl === "string" && raw.logoUrl.trim() ? raw.logoUrl.trim() : null,
-                submittedByUid: typeof raw.submittedByUid === "string" && raw.submittedByUid.trim() ? raw.submittedByUid.trim() : null,
-                submitterName: typeof raw.submitterName === "string" && raw.submitterName.trim() ? raw.submitterName.trim() : null,
-                submitterGraduationYear:
-                    typeof raw.submitterGraduationYear === "string" && /^\d{4}$/.test(raw.submitterGraduationYear.trim())
-                        ? raw.submitterGraduationYear.trim()
-                        : null,
-                submitterPhotoURL:
-                    typeof raw.submitterPhotoURL === "string" && raw.submitterPhotoURL.trim()
-                        ? raw.submitterPhotoURL.trim()
-                        : null,
-                createdAt: formatTimestamp(raw.createdAt),
-            };
-        },
+        (raw, id) => parseStartupDocument(raw, id),
         enabled
     );
 }

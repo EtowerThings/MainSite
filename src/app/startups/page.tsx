@@ -12,23 +12,47 @@ import {
     Globe,
     X,
     Sparkles,
+    Pencil,
+    Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PublicNav } from "@/components/public-nav";
-import { useStartups, type StartupItem } from "@/hooks/useFirestore";
+import { useStartups, deleteStartup, type StartupItem } from "@/hooks/useFirestore";
 import { useOptionalAuth } from "@/contexts/auth-context";
 import { hrefWebsite, hrefInstagram, hrefLinkedIn } from "@/lib/startup-gallery";
+import { isAdmin } from "@/lib/roles";
 
 function StartupDetailModal({
     startup,
     onClose,
+    canManage,
+    onDeleted,
 }: {
     startup: StartupItem;
     onClose: () => void;
+    canManage: boolean;
+    onDeleted?: () => void;
 }) {
     const web = hrefWebsite(startup.website);
     const ig = hrefInstagram(startup.instagramUrl);
     const li = hrefLinkedIn(startup.linkedinCompanyUrl);
+    const [deleting, setDeleting] = useState(false);
+
+    const handleDelete = async () => {
+        if (!canManage) return;
+        if (!confirm(`Remove “${startup.name}” from the gallery? This cannot be undone.`)) return;
+        setDeleting(true);
+        try {
+            await deleteStartup(startup.id);
+            onDeleted?.();
+            onClose();
+        } catch (e) {
+            console.error(e);
+            alert(e instanceof Error ? e.message : "Could not delete.");
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -163,11 +187,32 @@ function StartupDetailModal({
                                         <p className="mt-1 text-xs font-mono text-muted-foreground">Class of {startup.submitterGraduationYear}</p>
                                     )}
                                     <p className="mt-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/80">
-                                        Linked CODE OS profile at submission
+                                        Listed member at submission
                                     </p>
                                 </div>
                             </div>
                         </section>
+                    )}
+
+                    {canManage && (
+                        <div className="mt-6 flex flex-wrap gap-3 border-t border-border/40 pt-6">
+                            <Link
+                                href={`/startups/edit/${startup.id}`}
+                                onClick={onClose}
+                                className="inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 border border-primary/50 bg-primary/10 px-4 py-2.5 text-[10px] font-mono font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/20 sm:flex-none"
+                            >
+                                <Pencil className="h-3.5 w-3.5" /> Edit listing
+                            </Link>
+                            <button
+                                type="button"
+                                disabled={deleting}
+                                onClick={handleDelete}
+                                className="inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 border border-destructive/50 bg-destructive/10 px-4 py-2.5 text-[10px] font-mono font-bold uppercase tracking-widest text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 sm:flex-none"
+                            >
+                                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                {deleting ? "Removing…" : "Delete"}
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -177,10 +222,18 @@ function StartupDetailModal({
 
 export default function StartupsGalleryPage() {
     const { data: startups, loading } = useStartups();
-    const { user } = useOptionalAuth();
+    const { user, profile } = useOptionalAuth();
     const [selected, setSelected] = useState<StartupItem | null>(null);
 
     const closeModal = useCallback(() => setSelected(null), []);
+
+    const canManageStartup = useCallback(
+        (s: StartupItem) =>
+            !!user &&
+            !!profile &&
+            (isAdmin(profile.role) || (!!s.submittedByUid && s.submittedByUid === user.uid)),
+        [user, profile]
+    );
 
     return (
         <div className="min-h-screen bg-background relative overflow-hidden">
@@ -242,26 +295,35 @@ export default function StartupsGalleryPage() {
                                 )}
                             >
                                 <div className="absolute top-0 right-0 w-0 h-0 border-t-[20px] border-t-primary/20 border-l-[20px] border-l-transparent group-hover:border-t-primary/50 transition-colors z-20 pointer-events-none" />
-                                <div className="relative z-10 flex h-32 sm:h-40 items-center justify-center border-b border-border/40 bg-gradient-to-br from-primary/10 to-transparent">
-                                    {startup.logoUrl ? (
-                                        <img
-                                            src={startup.logoUrl}
-                                            alt=""
-                                            className="max-h-24 max-w-[85%] object-contain px-4 transition-transform group-hover:scale-105"
-                                        />
-                                    ) : (
-                                        <div className="flex h-14 w-14 items-center justify-center border border-primary/30 bg-primary/20 text-primary transition-transform hud-panel-sm group-hover:scale-110">
-                                            <Rocket className="h-6 w-6" />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="p-5 flex flex-col min-h-[200px] relative z-10">
-                                    <div className="text-[10px] font-mono text-primary/60 uppercase tracking-widest mb-1 line-clamp-1">
-                                        {startup.businessCategory} · Est. {startup.foundedYear}
+                                <div className="relative z-10 flex gap-4 border-b border-border/40 bg-gradient-to-br from-primary/[0.08] to-transparent p-4 sm:p-5">
+                                    <div
+                                        className={cn(
+                                            "relative shrink-0 overflow-hidden rounded-sm border border-border/50 bg-background/70 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]",
+                                            "flex h-[4.5rem] w-[4.5rem] items-center justify-center sm:h-[5rem] sm:w-[5rem]"
+                                        )}
+                                    >
+                                        {startup.logoUrl ? (
+                                            <img
+                                                src={startup.logoUrl}
+                                                alt=""
+                                                className="h-full w-full object-contain p-2 transition-transform group-hover:scale-[1.03]"
+                                            />
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center bg-primary/10 text-primary">
+                                                <Rocket className="h-8 w-8 opacity-90 sm:h-9 sm:w-9" />
+                                            </div>
+                                        )}
                                     </div>
-                                    <h3 className="font-bold text-lg mb-2 group-hover:text-primary transition-colors tracking-tight uppercase line-clamp-1">
-                                        {startup.name}
-                                    </h3>
+                                    <div className="min-w-0 flex-1 pt-0.5">
+                                        <div className="text-[10px] font-mono text-primary/60 uppercase tracking-widest mb-1 line-clamp-2 sm:line-clamp-1">
+                                            {startup.businessCategory} · Est. {startup.foundedYear}
+                                        </div>
+                                        <h3 className="font-bold text-base sm:text-lg group-hover:text-primary transition-colors tracking-tight uppercase line-clamp-2 leading-snug">
+                                            {startup.name}
+                                        </h3>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col min-h-[160px] flex-1 p-5 pt-4 relative z-10">
                                     <p className="text-xs text-muted-foreground font-mono mb-4 line-clamp-3 flex-grow">{startup.companyOverview}</p>
                                     <div className="mt-auto space-y-3 border-t border-border/40 pt-3">
                                         {(startup.submitterName || startup.submitterGraduationYear) && (
@@ -286,7 +348,14 @@ export default function StartupsGalleryPage() {
                 )}
             </div>
 
-            {selected && <StartupDetailModal startup={selected} onClose={closeModal} />}
+            {selected && (
+                <StartupDetailModal
+                    startup={selected}
+                    onClose={closeModal}
+                    canManage={canManageStartup(selected)}
+                    onDeleted={() => setSelected(null)}
+                />
+            )}
         </div>
     );
 }

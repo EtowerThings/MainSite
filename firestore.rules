@@ -106,7 +106,16 @@ service cloud.firestore {
         isSignedIn() && userExists() &&
         request.resource.data.submittedByUid == request.auth.uid
       );
-      allow update, delete: if isAdmin();
+      // Owners may update/delete only their listing; submittedByUid cannot change hands.
+      allow update: if isAdmin() || (
+        isSignedIn() && userExists() &&
+        resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByUid == request.auth.uid
+      );
+      allow delete: if isAdmin() || (
+        isSignedIn() && userExists() &&
+        resource.data.submittedByUid == request.auth.uid
+      );
     }
 
     /** Club-wide display settings (fiscal term label for budgets, dashboard, etc.). */

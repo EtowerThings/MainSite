@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, Fragment } from "react";
+import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import {
     useInquiries,
@@ -9,6 +10,7 @@ import {
     useMembers,
     useActionItems,
     useStartups,
+    deleteStartup,
     useEvents,
     getAttendanceIdsForOccurrence,
 } from "@/hooks/useFirestore";
@@ -58,6 +60,7 @@ import {
     Home,
     Info,
     Cake,
+    Trash2,
 } from "lucide-react";
 
 function formatOccurrenceDisplay(isoYmd: string): string {
@@ -167,6 +170,7 @@ export default function AdminPage() {
     const [startupFounderStory, setStartupFounderStory] = useState("");
     const [startupBusinessCategory, setStartupBusinessCategory] = useState<string>(STARTUP_BUSINESS_CATEGORIES[0]);
     const [startupSending, setStartupSending] = useState(false);
+    const [deletingStartupId, setDeletingStartupId] = useState<string | null>(null);
     const [startupLogo, setStartupLogo] = useState<File | null>(null);
     const [startupLogoPreview, setStartupLogoPreview] = useState<string | null>(null);
     const startupLogoRef = useRef<HTMLInputElement>(null);
@@ -639,6 +643,18 @@ export default function AdminPage() {
         }
     };
 
+    const handleDeleteStartupListing = async (startupId: string, displayName: string) => {
+        if (!confirm(`Remove “${displayName}” from the public startups gallery? This cannot be undone.`)) return;
+        setDeletingStartupId(startupId);
+        try {
+            await deleteStartup(startupId);
+        } catch (err) {
+            console.error("Delete startup error:", err);
+        } finally {
+            setDeletingStartupId(null);
+        }
+    };
+
     // ── Application Handling ──
     const handleAuthorize = async (id: string) => {
         const assignedRole = selectedRoles[id] || "member";
@@ -1036,19 +1052,22 @@ export default function AdminPage() {
                                     <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest relative z-10">NO DATA LOGS REQUIRE REVIEW.</p>
                                 ) : (
                                     <div className="space-y-3 relative z-10">
-                                        {startups.map(startup => (
-                                            <div key={startup.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hud-panel-sm bg-background/50 border border-border/40 hover:border-primary/40 transition-colors">
+                                        {startups.map((startup) => (
+                                            <div
+                                                key={startup.id}
+                                                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hud-panel-sm bg-background/50 border border-border/40 hover:border-primary/40 transition-colors"
+                                            >
                                                 <div className="flex min-w-0 flex-1 items-start gap-3">
                                                     {startup.logoUrl ? (
                                                         <img src={startup.logoUrl} alt="" className="h-10 w-10 shrink-0 border border-border/50 object-contain" />
                                                     ) : null}
                                                     <div className="min-w-0">
-                                                    <p className="font-bold font-mono tracking-tight uppercase text-sm">
-                                                        {startup.name}
-                                                        <span className="text-muted-foreground ml-2">
-                                                            [{startup.foundedYear}] · {startup.businessCategory}
-                                                        </span>
-                                                    </p>
+                                                        <p className="font-bold font-mono tracking-tight uppercase text-sm">
+                                                            {startup.name}
+                                                            <span className="text-muted-foreground ml-2">
+                                                                [{startup.foundedYear}] · {startup.businessCategory}
+                                                            </span>
+                                                        </p>
                                                         <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mt-0.5">
                                                             FOUNDERS: <span className="text-foreground">{startup.founders}</span>
                                                         </p>
@@ -1059,6 +1078,27 @@ export default function AdminPage() {
                                                             </p>
                                                         )}
                                                     </div>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-2">
+                                                    <Link
+                                                        href={`/startups/edit/${startup.id}`}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-2 hud-panel-sm border border-border/50 text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
+                                                    >
+                                                        Edit
+                                                    </Link>
+                                                    <button
+                                                        type="button"
+                                                        disabled={deletingStartupId === startup.id}
+                                                        onClick={() => handleDeleteStartupListing(startup.id, startup.name)}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-2 hud-panel-sm border border-destructive/40 text-[10px] font-mono font-bold uppercase tracking-widest text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                                                    >
+                                                        {deletingStartupId === startup.id ? (
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        )}
+                                                        Remove
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}

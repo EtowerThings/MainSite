@@ -1,10 +1,32 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Member-uploaded startup logos: only the signed-in uploader may write their folder; public read for gallery
+    // Member startup logos: world-readable so gallery <img> and download URLs work without sending Firebase Auth.
+    // Writes only under gs://…/startup-logos/{auth.uid}/…
     match /startup-logos/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
+
+      function isReasonableSize() {
+        return request.resource.size < 10 * 1024 * 1024;
+      }
+
+      // Allow typical image types; also octet-stream when the client omits a proper MIME (upload still from owner).
+      function isLikelyImage() {
+        return request.resource.contentType.matches('image/.*')
+          || request.resource.contentType == 'application/octet-stream';
+      }
+
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && isReasonableSize()
+        && isLikelyImage();
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && isReasonableSize()
+        && isLikelyImage();
+
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
