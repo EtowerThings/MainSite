@@ -315,12 +315,13 @@ export default function StartupsGalleryPage() {
                                         )}
                                     </div>
                                     <div className="min-w-0 flex-1 pt-0.5">
-                                        <div className="text-[10px] font-mono text-primary/60 uppercase tracking-widest mb-1 line-clamp-2 sm:line-clamp-1">
-                                            {startup.businessCategory} · Est. {startup.foundedYear}
-                                        </div>
+                                        <p className="text-[10px] font-mono uppercase tracking-widest text-primary/80 line-clamp-2 sm:line-clamp-1">
+                                            {startup.businessCategory}
+                                        </p>
                                         <h3 className="font-bold text-base sm:text-lg group-hover:text-primary transition-colors tracking-tight uppercase line-clamp-2 leading-snug">
                                             {startup.name}
                                         </h3>
+                                        <p className="mt-1 text-xs font-mono text-muted-foreground">Founded {startup.foundedYear}</p>
                                     </div>
                                 </div>
                                 <div className="flex flex-col min-h-[160px] flex-1 p-5 pt-4 relative z-10">
