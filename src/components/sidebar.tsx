@@ -26,6 +26,7 @@ import {
     Terminal,
     GraduationCap,
     Rocket,
+    CalendarRange,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { canAccessAdminCenter as checkExecAccess } from "@/lib/roles";
@@ -36,6 +37,8 @@ interface NavItem {
     href: string;
     icon: React.ReactNode;
     adminOnly?: boolean;
+    /** E-board workspace: visible to approved members (assignees); full features on page require leadership role. */
+    eboardWorkspace?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -44,6 +47,12 @@ const navItems: NavItem[] = [
     { label: "Resources", href: "/resources", icon: <BookOpen className="w-4 h-4" /> },
     { label: "Feed", href: "/feed", icon: <Activity className="w-4 h-4" /> },
     { label: "Events", href: "/events", icon: <CalendarDays className="w-4 h-4" /> },
+    {
+        label: "E-Board",
+        href: "/eboard",
+        icon: <CalendarRange className="w-4 h-4" />,
+        eboardWorkspace: true,
+    },
     { label: "Members", href: "/members", icon: <Users2 className="w-4 h-4" /> },
     { label: "Alumni Network", href: "/network", icon: <GraduationCap className="w-4 h-4" /> },
     { label: "Profile", href: "/profile", icon: <User className="w-4 h-4" /> },
@@ -72,9 +81,15 @@ export function Sidebar() {
         router.push("/");
     };
 
-    const filteredNav = navItems.filter(
-        (item) => !item.adminOnly || checkExecAccess(profile?.role)
-    );
+    const filteredNav = navItems.filter((item) => {
+        if (item.adminOnly && !checkExecAccess(profile?.role)) return false;
+        if (
+            item.eboardWorkspace &&
+            (!profile || profile.status === "pending" || profile.status === "rejected")
+        )
+            return false;
+        return true;
+    });
 
     const NavContent = () => (
         <div className="flex flex-col h-full bg-sidebar relative overflow-hidden scanlines">

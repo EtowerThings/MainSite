@@ -72,6 +72,16 @@ export function isPresident(role: string | undefined): boolean {
     return role === "president";
 }
 
+/** President, club VP, community manager, or functional VP — shared e-board calendar & tasks. */
+export function canAccessEboardWorkspace(role: string | undefined): boolean {
+    return LEADERSHIP_ROLES.includes(role as UserRole);
+}
+
+/** Approve or reject startup gallery proposals (core exec + functional VPs). */
+export function canReviewStartupSubmissions(role: string | undefined): boolean {
+    return canAccessEboardWorkspace(role);
+}
+
 export function getRoleLabel(role: string): string {
     const found = ALL_ROLES.find((r) => r.value === role);
     return found?.label || role;

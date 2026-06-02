@@ -10,25 +10,23 @@ import {
     useMembers,
     useActionItems,
     useStartups,
-    deleteStartup,
     useEvents,
     getAttendanceIdsForOccurrence,
 } from "@/hooks/useFirestore";
 import { expandAllEventOccurrences, occurrenceEventLike, type EventOccurrenceRow } from "@/lib/recurring-events";
 import { getEventStartMs, parseEventDate } from "@/lib/event-dates";
-import { isAdmin, canAccessAdminCenter, canManageEventAttendance, isPresident } from "@/lib/roles";
+import { isAdmin, canAccessAdminCenter, canManageEventAttendance, isPresident, canReviewStartupSubmissions } from "@/lib/roles";
 import { getRoleLabel, ALL_ROLES } from "@/lib/roles";
 import { ALL_RESIDENCY_OPTIONS, getResidencyLabel } from "@/lib/member-residency";
 import type { ResidencyType } from "@/lib/member-residency";
 import { cn } from "@/lib/utils";
 import { computeHousingPointsBreakdowns, HOUSING_POINTS_RULES_TEXT } from "@/lib/housing-points";
 import { buildBirthdayRows, membersMissingBirthday } from "@/lib/admin-birthdays";
-import { STARTUP_BUSINESS_CATEGORIES } from "@/lib/startup-gallery";
+import { StartupAdminTab } from "@/components/startup-admin-tab";
 import { BudgetAdminTab } from "@/components/budget-admin-tab";
 import { ClubFiscalAdminTab } from "@/components/club-fiscal-admin-tab";
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import {
     MessageSquare,
     Users,
@@ -118,6 +116,7 @@ function adminTabAllowed(
     attendance: boolean
 ): boolean {
     if (tab === "announcements" || tab === "budgets") return canAccessAdminCenter(role);
+    if (tab === "startups") return canReviewStartupSubmissions(role);
     if (tab === "clubFiscal") return core;
     if (tab === "housingPoints") return core;
     if (tab === "birthdays") return core;
@@ -131,6 +130,7 @@ export default function AdminPage() {
     const userIsPresident = isPresident(profile?.role);
     const userHasExecAccess = canAccessAdminCenter(profile?.role);
     const userCanManageAttendance = canManageEventAttendance(profile?.role);
+    const userCanReviewStartups = canReviewStartupSubmissions(profile?.role);
     const userSubscribesEvents =
         userIsCoreAdmin || profile?.role === "vp-events" || profile?.role === "events";
 
@@ -139,7 +139,7 @@ export default function AdminPage() {
     const { data: projects, loading: projectsLoading } = useProjects(userIsCoreAdmin);
     const { data: members, loading: membersLoading } = useMembers(userHasExecAccess);
     const { data: actionItems, loading: actionItemsLoading } = useActionItems(userIsCoreAdmin);
-    const { data: startups, loading: startupsLoading } = useStartups(userIsCoreAdmin);
+    const { data: startups, loading: startupsLoading } = useStartups(userCanReviewStartups);
     const { data: events, loading: eventsLoading, setEventOccurrenceAttendance } = useEvents(userSubscribesEvents);
 
     const [activeTab, setActiveTab] = useState<AdminTab | null>(null);
@@ -159,28 +159,6 @@ export default function AdminPage() {
     const [actionLink, setActionLink] = useState("");
     const [actionSending, setActionSending] = useState(false);
 
-    // Startups state
-    const [startupName, setStartupName] = useState("");
-    const [startupDesc, setStartupDesc] = useState("");
-    const [startupFounders, setStartupFounders] = useState("");
-    const [startupYear, setStartupYear] = useState("");
-    const [startupWebsite, setStartupWebsite] = useState("");
-    const [startupInstagram, setStartupInstagram] = useState("");
-    const [startupLinkedinCompany, setStartupLinkedinCompany] = useState("");
-    const [startupFounderStory, setStartupFounderStory] = useState("");
-    const [startupBusinessCategory, setStartupBusinessCategory] = useState<string>(STARTUP_BUSINESS_CATEGORIES[0]);
-    const [startupSending, setStartupSending] = useState(false);
-    const [deletingStartupId, setDeletingStartupId] = useState<string | null>(null);
-    const [startupLogo, setStartupLogo] = useState<File | null>(null);
-    const [startupLogoPreview, setStartupLogoPreview] = useState<string | null>(null);
-    const startupLogoRef = useRef<HTMLInputElement>(null);
-    const [startupLinkedUid, setStartupLinkedUid] = useState("");
-
-    useEffect(() => {
-        if (profile?.uid && startupLinkedUid === "") setStartupLinkedUid(profile.uid);
-    }, [profile?.uid, startupLinkedUid]);
-
-    // Applications state
     const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
     const [selectedResidency, setSelectedResidency] = useState<Record<string, ResidencyType>>({});
 
@@ -194,8 +172,8 @@ export default function AdminPage() {
             (inquiriesLoading ||
                 resourcesLoading ||
                 projectsLoading ||
-                actionItemsLoading ||
-                startupsLoading)) ||
+                actionItemsLoading)) ||
+        (userCanReviewStartups && startupsLoading) ||
         (userHasExecAccess && membersLoading) ||
         (userSubscribesEvents && eventsLoading);
 
@@ -203,6 +181,7 @@ export default function AdminPage() {
     const pendingResources = resources.filter((r) => !r.approved);
     const pendingPitches = projects.filter((p) => p.status === "ideation");
     const pendingApplications = members.filter((m) => m.status === "pending");
+    const pendingStartupProposals = useMemo(() => startups.filter((s) => s.status === "pending"), [startups]);
     const approvedMembers = members.filter((m) => m.status !== "pending" && m.status !== "rejected");
 
     // Skill → people map for batch export (each skill lists all people who have it)
@@ -439,7 +418,7 @@ export default function AdminPage() {
         { key: "budgets", label: "BUDGETS", icon: <Wallet className="w-4 h-4" /> },
         { key: "clubFiscal", label: "CLUB FISCAL", icon: <CalendarClock className="w-4 h-4" /> },
         { key: "actionItems", label: "DEADLINES", icon: <CheckSquare className="w-4 h-4" /> },
-        { key: "startups", label: "STARTUPS", icon: <Rocket className="w-4 h-4" /> },
+        { key: "startups", label: "STARTUPS", icon: <Rocket className="w-4 h-4" />, count: pendingStartupProposals.length },
         { key: "applications", label: "APPLICATIONS", icon: <UserPlus className="w-4 h-4" />, count: pendingApplications.length },
         { key: "inquiries", label: "COMMUNICATIONS", icon: <MessageSquare className="w-4 h-4" />, count: pendingInquiries.length },
         { key: "pitches", label: "PROPOSALS", icon: <FileText className="w-4 h-4" />, count: pendingPitches.length },
@@ -543,115 +522,6 @@ export default function AdminPage() {
             console.error("Action item error:", err);
         } finally {
             setActionSending(false);
-        }
-    };
-
-    // ── Startup Generation ──
-    const approvedMembersSorted = useMemo(
-        () =>
-            approvedMembers
-                .slice()
-                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
-        [approvedMembers]
-    );
-
-    const handleStartupLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !file.type.startsWith("image/")) {
-            setStartupLogo(null);
-            setStartupLogoPreview(null);
-            return;
-        }
-        setStartupLogo(file);
-        const reader = new FileReader();
-        reader.onloadend = () => setStartupLogoPreview(reader.result as string);
-        reader.readAsDataURL(file);
-    };
-
-    const handleCreateStartup = async () => {
-        if (
-            !startupName.trim() ||
-            !startupDesc.trim() ||
-            !startupFounderStory.trim() ||
-            !startupFounders.trim() ||
-            !startupYear.trim() ||
-            !startupLinkedUid.trim() ||
-            !startupBusinessCategory.trim()
-        )
-            return;
-        if (!profile?.uid) return;
-        setStartupSending(true);
-        try {
-            let logoUrl: string | null = null;
-            if (startupLogo) {
-                const safe = startupLogo.name.replace(/[^\w.-]/g, "_").slice(0, 80);
-                const path = `startup-logos/${profile.uid}/${Date.now()}-admin-${safe}`;
-                const storageRef = ref(storage, path);
-                await uploadBytes(storageRef, startupLogo);
-                logoUrl = await getDownloadURL(storageRef);
-            }
-
-            const linked = members.find((m) => m.id === startupLinkedUid.trim());
-            await addDoc(collection(db, "startups"), {
-                name: startupName.trim(),
-                companyOverview: startupDesc.trim(),
-                founderStory: startupFounderStory.trim(),
-                founders: startupFounders.trim(),
-                foundedYear: startupYear.trim(),
-                businessCategory: startupBusinessCategory.trim(),
-                website: startupWebsite.trim() || null,
-                instagramUrl: startupInstagram.trim() || null,
-                linkedinCompanyUrl: startupLinkedinCompany.trim() || null,
-                logoUrl,
-                submittedByUid: startupLinkedUid.trim(),
-                submitterName: linked?.name?.trim() || profile.displayName?.trim() || "Member",
-                submitterGraduationYear: linked?.graduationYear ?? null,
-                submitterPhotoURL: linked?.photoURL?.trim() || profile.photoURL?.trim() || null,
-                createdAt: serverTimestamp(),
-            });
-
-            // Announce to feed
-            await addDoc(collection(db, "activityFeed"), {
-                type: "milestone_update",
-                actorId: profile?.uid || "admin",
-                actorName: "System",
-                targetId: "startups",
-                targetName: startupName,
-                description: `Added "${startupName}" to the Alumni Startups Gallery.`,
-                pinned: false,
-                pinnedBy: null,
-                createdAt: serverTimestamp(),
-            });
-
-            setStartupName("");
-            setStartupDesc("");
-            setStartupFounderStory("");
-            setStartupFounders("");
-            setStartupYear("");
-            setStartupWebsite("");
-            setStartupInstagram("");
-            setStartupLinkedinCompany("");
-            setStartupBusinessCategory(STARTUP_BUSINESS_CATEGORIES[0]);
-            setStartupLogo(null);
-            setStartupLogoPreview(null);
-            if (startupLogoRef.current) startupLogoRef.current.value = "";
-            setStartupLinkedUid(profile.uid);
-        } catch (err) {
-            console.error("Startup creation error:", err);
-        } finally {
-            setStartupSending(false);
-        }
-    };
-
-    const handleDeleteStartupListing = async (startupId: string, displayName: string) => {
-        if (!confirm(`Remove “${displayName}” from the public startups gallery? This cannot be undone.`)) return;
-        setDeletingStartupId(startupId);
-        try {
-            await deleteStartup(startupId);
-        } catch (err) {
-            console.error("Delete startup error:", err);
-        } finally {
-            setDeletingStartupId(null);
         }
     };
 
@@ -877,235 +747,15 @@ export default function AdminPage() {
 
                     {/* ── Startups Tab ── */}
                     {activeTab === "startups" && (
-                        <div className="space-y-6">
-                            <div className="hud-panel bg-card/60 border border-primary/40 p-6 sm:p-8 scanlines relative">
-                                <div className="absolute top-0 right-0 w-32 h-1 bg-gradient-to-r from-transparent to-primary/50" />
-                                <h3 className="font-bold text-lg mb-6 flex items-center gap-3 uppercase tracking-tight relative z-10 text-primary border-b border-primary/20 pb-4">
-                                    <Rocket className="w-5 h-5" /> INITIALIZE ALUMNI STARTUP
-                                </h3>
-
-                                <div className="space-y-5 relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                                    <div className="space-y-1.5 md:col-span-2">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">LINKED MEMBER (CODE OS)</label>
-                                        <select
-                                            value={startupLinkedUid}
-                                            onChange={(e) => setStartupLinkedUid(e.target.value)}
-                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
-                                        >
-                                            {(approvedMembersSorted.length > 0
-                                                ? approvedMembersSorted
-                                                : profile
-                                                  ? [
-                                                        {
-                                                            id: profile.uid,
-                                                            name: profile.displayName || "You",
-                                                            graduationYear: profile.graduationYear ?? null,
-                                                            photoURL: profile.photoURL ?? null,
-                                                        },
-                                                    ]
-                                                  : []
-                                            ).map((m) => (
-                                                <option key={m.id} value={m.id}>
-                                                    {m.name}
-                                                    {m.graduationYear ? ` · ’${m.graduationYear.slice(-2)}` : ""}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-1">
-                                            Gallery shows this person and their graduation year from the roster.
-                                        </p>
-                                    </div>
-
-                                    <div className="space-y-1.5 md:col-span-1">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY DESIGNATION</label>
-                                        <input type="text" value={startupName} onChange={(e) => setStartupName(e.target.value)} placeholder="e.g. OpenAI..." className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono uppercase transition-colors focus:outline-none" />
-                                    </div>
-
-                                    <div className="space-y-1.5 md:col-span-1">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">YEAR ESTABLISHED</label>
-                                        <input type="text" value={startupYear} onChange={(e) => setStartupYear(e.target.value)} placeholder="e.g. 2024..." className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none" />
-                                    </div>
-
-                                    <div className="space-y-1.5 md:col-span-1">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">BUSINESS CATEGORY</label>
-                                        <select
-                                            value={startupBusinessCategory}
-                                            onChange={(e) => setStartupBusinessCategory(e.target.value)}
-                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
-                                        >
-                                            {STARTUP_BUSINESS_CATEGORIES.map((c) => (
-                                                <option key={c} value={c}>
-                                                    {c}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="space-y-1.5 md:col-span-1">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">FOUNDING OPERATIVES</label>
-                                        <input type="text" value={startupFounders} onChange={(e) => setStartupFounders(e.target.value)} placeholder="e.g. Alice & Bob..." className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono uppercase transition-colors focus:outline-none" />
-                                    </div>
-
-                                    <div className="space-y-1.5 md:col-span-1">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY WEBSITE</label>
-                                        <input type="url" value={startupWebsite} onChange={(e) => setStartupWebsite(e.target.value)} placeholder="https://..." className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none" />
-                                    </div>
-
-                                    <div className="space-y-1.5 md:col-span-1">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">INSTAGRAM</label>
-                                        <input
-                                            type="text"
-                                            value={startupInstagram}
-                                            onChange={(e) => setStartupInstagram(e.target.value)}
-                                            placeholder="@handle or URL"
-                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1.5 md:col-span-1">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY LINKEDIN</label>
-                                        <input
-                                            type="text"
-                                            value={startupLinkedinCompany}
-                                            onChange={(e) => setStartupLinkedinCompany(e.target.value)}
-                                            placeholder="company/slug or URL"
-                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1.5 col-span-1 md:col-span-2">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY LOGO (OPTIONAL)</label>
-                                        <input
-                                            ref={startupLogoRef}
-                                            type="file"
-                                            accept="image/png,image/jpeg,image/webp"
-                                            onChange={handleStartupLogo}
-                                            className="hidden"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => startupLogoRef.current?.click()}
-                                            className={cn(
-                                                "w-full flex flex-col items-center justify-center gap-2 px-4 py-4 border border-dashed transition-colors hud-panel-sm",
-                                                startupLogo ? "border-primary/40 bg-primary/5" : "border-border/50 bg-background/40 hover:border-primary/50"
-                                            )}
-                                        >
-                                            {startupLogoPreview ? (
-                                                <img src={startupLogoPreview} alt="" className="h-16 w-16 object-contain border border-primary/30" />
-                                            ) : (
-                                                <Upload className="w-6 h-6 text-muted-foreground" />
-                                            )}
-                                            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                                                {startupLogo ? "Click to replace" : "PNG, JPG, WebP"}
-                                            </span>
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-1.5 col-span-1 md:col-span-2">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">COMPANY OVERVIEW</label>
-                                        <textarea value={startupDesc} onChange={(e) => setStartupDesc(e.target.value)} placeholder="Short overview for cards and detail header…" rows={3} className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none resize-none" />
-                                    </div>
-
-                                    <div className="space-y-1.5 col-span-1 md:col-span-2">
-                                        <label className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest ml-1">FOUNDER STORY</label>
-                                        <textarea
-                                            value={startupFounderStory}
-                                            onChange={(e) => setStartupFounderStory(e.target.value)}
-                                            placeholder="Why you started, milestones, vision…"
-                                            rows={5}
-                                            className="w-full px-4 py-3 hud-panel-sm bg-background/60 border border-border/50 focus:border-primary/50 text-sm font-mono transition-colors focus:outline-none resize-none"
-                                        />
-                                    </div>
-
-                                    <div className="col-span-1 md:col-span-2 pt-2 flex items-center justify-between">
-                                        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest leading-relaxed max-w-sm border-l-2 border-primary/30 pl-3">
-                                            NEW STARTUP DATA WILL BE PUBLISHED IMMEDIATELY TO THE PUBLIC STARTUP GALLERY.
-                                        </p>
-                                        <button
-                                            onClick={handleCreateStartup}
-                                            disabled={
-                                                startupSending ||
-                                                !startupName.trim() ||
-                                                !startupDesc.trim() ||
-                                                !startupFounderStory.trim() ||
-                                                !startupFounders.trim() ||
-                                                !startupYear.trim() ||
-                                                !startupLinkedUid.trim() ||
-                                                !startupBusinessCategory.trim()
-                                            }
-                                            className="hud-panel bg-primary text-primary-foreground px-8 py-3.5 text-xs font-mono font-bold uppercase tracking-widest hover:brightness-110 transition-all glow-border disabled:opacity-50 flex items-center gap-3"
-                                        >
-                                            {startupSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                            {startupSending ? "INITIALIZING..." : "PUBLISH STARTUP"}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Existing Startups List Admin View */}
-                            <div className="hud-panel bg-card/40 border border-border/40 p-6 sm:p-8 scanlines relative mt-6">
-                                <h3 className="font-bold text-sm mb-4 flex items-center gap-2 uppercase tracking-tight relative z-10 text-muted-foreground">
-                                    <Rocket className="w-4 h-4" /> EXTANT STARTUPS
-                                    <span className="ml-auto text-[10px] bg-primary/10 text-primary border border-primary/30 px-2 py-0.5">{startups.length} REGISTERED</span>
-                                </h3>
-                                {startups.length === 0 ? (
-                                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest relative z-10">NO DATA LOGS REQUIRE REVIEW.</p>
-                                ) : (
-                                    <div className="space-y-3 relative z-10">
-                                        {startups.map((startup) => (
-                                            <div
-                                                key={startup.id}
-                                                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hud-panel-sm bg-background/50 border border-border/40 hover:border-primary/40 transition-colors"
-                                            >
-                                                <div className="flex min-w-0 flex-1 items-start gap-3">
-                                                    {startup.logoUrl ? (
-                                                        <img src={startup.logoUrl} alt="" className="h-10 w-10 shrink-0 border border-border/50 object-contain" />
-                                                    ) : null}
-                                                    <div className="min-w-0">
-                                                        <p className="font-bold font-mono tracking-tight uppercase text-sm">
-                                                            {startup.name}
-                                                            <span className="text-muted-foreground ml-2">
-                                                                [{startup.foundedYear}] · {startup.businessCategory}
-                                                            </span>
-                                                        </p>
-                                                        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mt-0.5">
-                                                            FOUNDERS: <span className="text-foreground">{startup.founders}</span>
-                                                        </p>
-                                                        {(startup.submitterName || startup.submitterGraduationYear) && (
-                                                            <p className="text-[9px] font-mono text-primary/70 uppercase tracking-widest mt-1">
-                                                                {startup.submitterName}
-                                                                {startup.submitterGraduationYear ? ` · Class of ${startup.submitterGraduationYear}` : ""}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="flex shrink-0 items-center gap-2">
-                                                    <Link
-                                                        href={`/startups/edit/${startup.id}`}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-2 hud-panel-sm border border-border/50 text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
-                                                    >
-                                                        Edit
-                                                    </Link>
-                                                    <button
-                                                        type="button"
-                                                        disabled={deletingStartupId === startup.id}
-                                                        onClick={() => handleDeleteStartupListing(startup.id, startup.name)}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-2 hud-panel-sm border border-destructive/40 text-[10px] font-mono font-bold uppercase tracking-widest text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                                                    >
-                                                        {deletingStartupId === startup.id ? (
-                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                        ) : (
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        )}
-                                                        Remove
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        <StartupAdminTab
+                            startups={startups}
+                            approvedMembers={approvedMembers.map((m) => ({
+                                id: m.id,
+                                name: m.name,
+                                graduationYear: m.graduationYear ?? null,
+                                photoURL: m.photoURL ?? null,
+                            }))}
+                        />
                     )}
 
                     {/* ── Applications Tab ── */}

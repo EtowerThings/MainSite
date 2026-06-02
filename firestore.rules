@@ -36,6 +36,25 @@ service cloud.firestore {
         (isAdmin() || userRole() == 'events' || userRole() == 'vp-events');
     }
 
+    /** Core e-board: executives + functional VPs (not recruitment/outreach team leads alone). */
+    function isEboardMember() {
+      return isSignedIn() && userExists() && (isAdmin() || isVpRole());
+    }
+
+    function isEboardTaskAssignee() {
+      return isSignedIn() &&
+        resource.data.assigneeUids is list &&
+        request.auth.uid in resource.data.assigneeUids;
+    }
+
+    function startupIsPublic() {
+      return !('status' in resource.data) || resource.data.status == 'approved';
+    }
+
+    function isStartupSubmitter() {
+      return isSignedIn() && resource.data.submittedByUid == request.auth.uid;
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.auth.uid == userId;
@@ -101,20 +120,27 @@ service cloud.firestore {
     }
 
     match /startups/{startupId} {
-      allow read: if true;
-      allow create: if isAdmin() || (
+      allow read: if startupIsPublic() || isEboardMember() || isStartupSubmitter();
+      allow create: if (
+        isEboardMember() && request.resource.data.status == 'approved'
+      ) || (
         isSignedIn() && userExists() &&
-        request.resource.data.submittedByUid == request.auth.uid
+        request.resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.status == 'pending'
       );
-      // Owners may update/delete only their listing; submittedByUid cannot change hands.
-      allow update: if isAdmin() || (
+      allow update: if isEboardMember() || (
         isSignedIn() && userExists() &&
-        resource.data.submittedByUid == request.auth.uid &&
-        request.resource.data.submittedByUid == request.auth.uid
+        isStartupSubmitter() &&
+        request.resource.data.submittedByUid == request.auth.uid &&
+        (
+          (resource.data.status == 'pending' && request.resource.data.status == 'pending') ||
+          (resource.data.status == 'approved' && request.resource.data.status == 'approved')
+        )
       );
-      allow delete: if isAdmin() || (
+      allow delete: if isEboardMember() || (
         isSignedIn() && userExists() &&
-        resource.data.submittedByUid == request.auth.uid
+        isStartupSubmitter() &&
+        resource.data.status == 'pending'
       );
     }
 
@@ -122,6 +148,22 @@ service cloud.firestore {
     match /orgSettings/{docId} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();
+    }
+
+    /** E-board shared tasks (assignees may mark status / completion only). */
+    match /eboardTasks/{taskId} {
+      allow read: if isEboardMember() || isEboardTaskAssignee();
+      allow create, delete: if isEboardMember();
+      allow update: if isEboardMember() || (
+        isEboardTaskAssignee() &&
+        request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly(['status', 'completedAt', 'updatedAt'])
+      );
+    }
+
+    /** E-board-only calendar entries (meetings, deadlines, milestones). */
+    match /eboardCalendarEvents/{eventId} {
+      allow read, create, update, delete: if isEboardMember();
     }
   }
 }

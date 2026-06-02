@@ -30,6 +30,8 @@ import {
     parseOrgSettingsRaw,
     type OrgSettingsData,
 } from "@/lib/org-fiscal";
+import type { StartupListingStatus } from "@/lib/startup-gallery";
+import { isStartupPubliclyVisible } from "@/lib/startup-gallery";
 import { parseClubRole, parseResidency, type ResidencyType } from "@/lib/member-residency";
 
 // ──────────────────────────────────────
@@ -806,6 +808,10 @@ export interface StartupItem {
     submitterGraduationYear: string | null;
     /** Headshot of linked CODE member at submission time. */
     submitterPhotoURL: string | null;
+    status: StartupListingStatus;
+    reviewedByUid: string | null;
+    reviewedByName: string | null;
+    reviewedAt: string;
     createdAt: string;
 }
 
@@ -846,6 +852,15 @@ export function parseStartupDocument(raw: DocumentData, id: string): StartupItem
             typeof raw.submitterPhotoURL === "string" && raw.submitterPhotoURL.trim()
                 ? raw.submitterPhotoURL.trim()
                 : null,
+        status:
+            raw.status === "pending" || raw.status === "rejected"
+                ? raw.status
+                : "approved",
+        reviewedByUid:
+            typeof raw.reviewedByUid === "string" && raw.reviewedByUid.trim() ? raw.reviewedByUid.trim() : null,
+        reviewedByName:
+            typeof raw.reviewedByName === "string" && raw.reviewedByName.trim() ? raw.reviewedByName.trim() : null,
+        reviewedAt: formatTimestamp(raw.reviewedAt),
         createdAt: formatTimestamp(raw.createdAt),
     };
 }
@@ -883,6 +898,25 @@ export async function updateStartup(startupId: string, patch: StartupUpdatePaylo
 
 export async function deleteStartup(startupId: string) {
     await deleteDoc(doc(db, "startups", startupId));
+}
+
+export async function reviewStartupListing(
+    startupId: string,
+    decision: "approved" | "rejected",
+    reviewer: { uid: string; name: string }
+) {
+    await updateDoc(doc(db, "startups", startupId), {
+        status: decision,
+        reviewedByUid: reviewer.uid,
+        reviewedByName: reviewer.name,
+        reviewedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+    });
+}
+
+/** Gallery cards and public listings only. */
+export function filterPublicStartupListings(items: StartupItem[]): StartupItem[] {
+    return items.filter((s) => isStartupPubliclyVisible(s.status));
 }
 
 export function useStartups(enabled: boolean = true) {
@@ -1094,6 +1128,241 @@ export function useOrgSettings(enabled: boolean = true) {
     };
 
     return { data, loading, error, saveOrgSettings };
+}
+
+// ──────────────────────────────────────
+// E-board workspace (tasks + calendar)
+// ──────────────────────────────────────
+export type EboardTaskStatus = "todo" | "in_progress" | "done" | "cancelled";
+export type EboardTaskPriority = "low" | "normal" | "high" | "urgent";
+
+export interface EboardTaskItem {
+    id: string;
+    title: string;
+    description: string;
+    assigneeUids: string[];
+    /** `YYYY-MM-DD` or null when no due date. */
+    dueDate: string | null;
+    status: EboardTaskStatus;
+    priority: EboardTaskPriority;
+    createdBy: string;
+    createdAt: string;
+    completedAt: string | null;
+    updatedAt: string | null;
+}
+
+export interface EboardCalendarEventItem {
+    id: string;
+    title: string;
+    description: string;
+    startDate: string;
+    endDate: string | null;
+    startTime: string;
+    endTime: string;
+    allDay: boolean;
+    location: string | null;
+    attendeeUids: string[];
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string | null;
+}
+
+function parseEboardTask(raw: DocumentData, id: string): EboardTaskItem {
+    const assignees = Array.isArray(raw.assigneeUids)
+        ? (raw.assigneeUids as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+        : [];
+    const due =
+        typeof raw.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.dueDate.trim())
+            ? raw.dueDate.trim()
+            : raw.dueDate instanceof Timestamp
+              ? rawDateToYyyyMmDd(raw.dueDate)
+              : null;
+    const statusRaw = typeof raw.status === "string" ? raw.status : "todo";
+    const status: EboardTaskStatus =
+        statusRaw === "in_progress" || statusRaw === "done" || statusRaw === "cancelled" ? statusRaw : "todo";
+    const priRaw = typeof raw.priority === "string" ? raw.priority : "normal";
+    const priority: EboardTaskPriority =
+        priRaw === "low" || priRaw === "high" || priRaw === "urgent" ? priRaw : "normal";
+    return {
+        id,
+        title: typeof raw.title === "string" ? raw.title.trim() : "Untitled",
+        description: typeof raw.description === "string" ? raw.description : "",
+        assigneeUids: assignees,
+        dueDate: due || null,
+        status,
+        priority,
+        createdBy: typeof raw.createdBy === "string" ? raw.createdBy : "",
+        createdAt: formatTimestamp(raw.createdAt),
+        completedAt: raw.completedAt ? formatTimestamp(raw.completedAt) : null,
+        updatedAt: raw.updatedAt ? formatTimestamp(raw.updatedAt) : null,
+    };
+}
+
+function parseEboardCalendarEvent(raw: DocumentData, id: string): EboardCalendarEventItem {
+    const attendees = Array.isArray(raw.attendeeUids)
+        ? (raw.attendeeUids as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+        : [];
+    const start =
+        typeof raw.startDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.startDate.trim())
+            ? raw.startDate.trim()
+            : rawDateToYyyyMmDd(raw.startDate) || "";
+    let end: string | null =
+        typeof raw.endDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.endDate.trim()) ? raw.endDate.trim() : null;
+    if (!end && raw.endDate instanceof Timestamp) {
+        const e = rawDateToYyyyMmDd(raw.endDate);
+        end = e || null;
+    }
+    return {
+        id,
+        title: typeof raw.title === "string" ? raw.title.trim() : "Untitled",
+        description: typeof raw.description === "string" ? raw.description : "",
+        startDate: start,
+        endDate: end,
+        startTime: typeof raw.startTime === "string" ? raw.startTime : "",
+        endTime: typeof raw.endTime === "string" ? raw.endTime : "",
+        allDay: raw.allDay === true,
+        location: typeof raw.location === "string" && raw.location.trim() ? raw.location.trim() : null,
+        attendeeUids: attendees,
+        createdBy: typeof raw.createdBy === "string" ? raw.createdBy : "",
+        createdAt: formatTimestamp(raw.createdAt),
+        updatedAt: raw.updatedAt ? formatTimestamp(raw.updatedAt) : null,
+    };
+}
+
+export function useEboardTasks(enabled: boolean = true) {
+    const result = useCollection<EboardTaskItem>(
+        "eboardTasks",
+        [orderBy("createdAt", "desc")],
+        (raw, id) => parseEboardTask(raw, id),
+        enabled
+    );
+
+    const createTask = async (input: {
+        title: string;
+        description: string;
+        assigneeUids: string[];
+        dueDate: string | null;
+        priority: EboardTaskPriority;
+        status?: EboardTaskStatus;
+        createdBy: string;
+    }) => {
+        await addDoc(collection(db, "eboardTasks"), {
+            title: input.title.trim(),
+            description: input.description.trim(),
+            assigneeUids: input.assigneeUids,
+            dueDate: input.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) ? input.dueDate : null,
+            status: input.status ?? "todo",
+            priority: input.priority,
+            createdBy: input.createdBy,
+            completedAt: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+    };
+
+    const updateTask = async (
+        taskId: string,
+        patch: Partial<
+            Pick<EboardTaskItem, "title" | "description" | "assigneeUids" | "dueDate" | "status" | "priority">
+        > & { completedAt?: unknown }
+    ) => {
+        const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
+        if (patch.title !== undefined) payload.title = patch.title.trim();
+        if (patch.description !== undefined) payload.description = patch.description.trim();
+        if (patch.assigneeUids !== undefined) payload.assigneeUids = patch.assigneeUids;
+        if (patch.dueDate !== undefined)
+            payload.dueDate =
+                patch.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(patch.dueDate) ? patch.dueDate : null;
+        if (patch.status !== undefined) payload.status = patch.status;
+        if (patch.priority !== undefined) payload.priority = patch.priority;
+        if (patch.completedAt !== undefined) payload.completedAt = patch.completedAt;
+        await updateDoc(doc(db, "eboardTasks", taskId), payload);
+    };
+
+    const deleteTask = async (taskId: string) => {
+        await deleteDoc(doc(db, "eboardTasks", taskId));
+    };
+
+    return { ...result, createTask, updateTask, deleteTask };
+}
+
+export function useEboardCalendarEvents(enabled: boolean = true) {
+    const result = useCollection<EboardCalendarEventItem>(
+        "eboardCalendarEvents",
+        [orderBy("startDate", "asc")],
+        (raw, id) => parseEboardCalendarEvent(raw, id),
+        enabled
+    );
+
+    const createCalendarEvent = async (input: {
+        title: string;
+        description: string;
+        startDate: string;
+        endDate: string | null;
+        startTime: string;
+        endTime: string;
+        allDay: boolean;
+        location: string | null;
+        attendeeUids: string[];
+        createdBy: string;
+    }) => {
+        await addDoc(collection(db, "eboardCalendarEvents"), {
+            title: input.title.trim(),
+            description: input.description.trim(),
+            startDate: input.startDate,
+            endDate: input.endDate,
+            startTime: input.allDay ? "" : input.startTime,
+            endTime: input.allDay ? "" : input.endTime,
+            allDay: input.allDay,
+            location: input.location,
+            attendeeUids: input.attendeeUids,
+            createdBy: input.createdBy,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+    };
+
+    const updateCalendarEvent = async (
+        eventId: string,
+        patch: Partial<
+            Pick<
+                EboardCalendarEventItem,
+                | "title"
+                | "description"
+                | "startDate"
+                | "endDate"
+                | "startTime"
+                | "endTime"
+                | "allDay"
+                | "location"
+                | "attendeeUids"
+            >
+        >
+    ) => {
+        const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
+        if (patch.title !== undefined) payload.title = patch.title.trim();
+        if (patch.description !== undefined) payload.description = patch.description.trim();
+        if (patch.startDate !== undefined) payload.startDate = patch.startDate;
+        if (patch.endDate !== undefined) payload.endDate = patch.endDate;
+        if (patch.startTime !== undefined) payload.startTime = patch.startTime;
+        if (patch.endTime !== undefined) payload.endTime = patch.endTime;
+        if (patch.allDay !== undefined) {
+            payload.allDay = patch.allDay;
+            if (patch.allDay) {
+                payload.startTime = "";
+                payload.endTime = "";
+            }
+        }
+        if (patch.location !== undefined) payload.location = patch.location;
+        if (patch.attendeeUids !== undefined) payload.attendeeUids = patch.attendeeUids;
+        await updateDoc(doc(db, "eboardCalendarEvents", eventId), payload);
+    };
+
+    const deleteCalendarEvent = async (eventId: string) => {
+        await deleteDoc(doc(db, "eboardCalendarEvents", eventId));
+    };
+
+    return { ...result, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent };
 }
 
 // ──────────────────────────────────────

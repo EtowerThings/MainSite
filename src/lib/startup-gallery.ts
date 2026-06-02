@@ -18,6 +18,12 @@ export const STARTUP_BUSINESS_CATEGORIES = [
 
 export type StartupBusinessCategory = (typeof STARTUP_BUSINESS_CATEGORIES)[number];
 
+export type StartupListingStatus = "pending" | "approved" | "rejected";
+
+export function isStartupPubliclyVisible(status: StartupListingStatus): boolean {
+    return status === "approved";
+}
+
 export function isStartupBusinessCategory(s: string): s is StartupBusinessCategory {
     return (STARTUP_BUSINESS_CATEGORIES as readonly string[]).includes(s);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
     Rocket,
@@ -17,10 +17,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PublicNav } from "@/components/public-nav";
-import { useStartups, deleteStartup, type StartupItem } from "@/hooks/useFirestore";
+import { useStartups, deleteStartup, filterPublicStartupListings, type StartupItem } from "@/hooks/useFirestore";
 import { useOptionalAuth } from "@/contexts/auth-context";
 import { hrefWebsite, hrefInstagram, hrefLinkedIn } from "@/lib/startup-gallery";
-import { isAdmin } from "@/lib/roles";
+import { canReviewStartupSubmissions } from "@/lib/roles";
 
 function StartupDetailModal({
     startup,
@@ -221,7 +221,8 @@ function StartupDetailModal({
 }
 
 export default function StartupsGalleryPage() {
-    const { data: startups, loading } = useStartups();
+    const { data: allStartups, loading } = useStartups();
+    const startups = useMemo(() => filterPublicStartupListings(allStartups), [allStartups]);
     const { user, profile } = useOptionalAuth();
     const [selected, setSelected] = useState<StartupItem | null>(null);
 
@@ -231,7 +232,8 @@ export default function StartupsGalleryPage() {
         (s: StartupItem) =>
             !!user &&
             !!profile &&
-            (isAdmin(profile.role) || (!!s.submittedByUid && s.submittedByUid === user.uid)),
+            (canReviewStartupSubmissions(profile.role) ||
+                (!!s.submittedByUid && s.submittedByUid === user.uid && s.status === "approved")),
         [user, profile]
     );
 
@@ -262,7 +264,7 @@ export default function StartupsGalleryPage() {
                                 href="/startups/submit"
                                 className="hud-panel-sm border border-primary/50 bg-primary/10 px-5 py-2.5 text-xs font-mono font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
                             >
-                                Submit your startup
+                                Propose your startup
                             </Link>
                         )}
                     </div>

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -13,6 +14,8 @@ import { cn } from "@/lib/utils";
 
 export default function SubmitStartupPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const submitted = searchParams.get("submitted") === "1";
     const { user, profile, loading: authLoading } = useAuth();
     const [name, setName] = useState("");
     const [companyOverview, setCompanyOverview] = useState("");
@@ -84,6 +87,7 @@ export default function SubmitStartupPage() {
                 instagramUrl: instagramUrl.trim() || null,
                 linkedinCompanyUrl: linkedinCompanyUrl.trim() || null,
                 logoUrl,
+                status: "pending",
                 submittedByUid: user.uid,
                 submitterName: profile.displayName?.trim() || "Member",
                 submitterGraduationYear: profile.graduationYear?.trim() || null,
@@ -91,7 +95,7 @@ export default function SubmitStartupPage() {
                 createdAt: serverTimestamp(),
             });
 
-            router.push("/startups");
+            router.push("/startups/submit?submitted=1");
         } catch (err) {
             console.error(err);
             setError(err instanceof Error ? err.message : "Could not submit. Check you are signed in and try again.");
@@ -124,9 +128,9 @@ export default function SubmitStartupPage() {
                 <div className="mb-6 flex items-center gap-3 border-b border-border/40 pb-4">
                     <Rocket className="h-6 w-6 text-primary" />
                     <div>
-                        <h1 className="text-xl font-black uppercase tracking-tight">Submit a startup</h1>
+                        <h1 className="text-xl font-black uppercase tracking-tight">Propose a startup</h1>
                         <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-                            Listing is tied to your CODE profile
+                            E-board review required before it appears in the public gallery
                             {profile?.graduationYear ? ` · Class of ${profile.graduationYear}` : ""}
                         </p>
                     </div>
@@ -138,6 +142,18 @@ export default function SubmitStartupPage() {
                     </p>
                 )}
 
+                {submitted && (
+                    <div className="mb-6 rounded-sm border border-primary/40 bg-primary/10 px-4 py-3 text-xs font-mono leading-relaxed text-foreground/90">
+                        Proposal received. President, VP, community manager, or a functional VP will review it before it goes live in the gallery.
+                        <div className="mt-4">
+                            <Link href="/startups" className="text-primary font-bold uppercase tracking-widest hover:underline">
+                                Back to gallery
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {!submitted && (
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <section className="space-y-4">
                         <h2 className="text-[10px] font-mono font-bold uppercase tracking-widest text-primary border-b border-border/30 pb-2">Company</h2>
@@ -252,9 +268,10 @@ export default function SubmitStartupPage() {
                         className="flex w-full items-center justify-center gap-2 border border-primary bg-primary py-3 font-mono text-xs font-bold uppercase tracking-widest text-primary-foreground transition-all hover:brightness-110 disabled:opacity-50 hud-panel glow-border-strong"
                     >
                         {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        {sending ? "Publishing…" : "Publish to gallery"}
+                        {sending ? "Submitting…" : "Submit proposal"}
                     </button>
                 </form>
+                )}
             </div>
         </div>
     );

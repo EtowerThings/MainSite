@@ -9,7 +9,7 @@ import { db, storage } from "@/lib/firebase";
 import { useAuth } from "@/contexts/auth-context";
 import { parseStartupDocument, updateStartup } from "@/hooks/useFirestore";
 import { STARTUP_BUSINESS_CATEGORIES, isStartupBusinessCategory } from "@/lib/startup-gallery";
-import { isAdmin } from "@/lib/roles";
+import { canReviewStartupSubmissions } from "@/lib/roles";
 import { ArrowLeft, Loader2, Rocket, Send, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,7 @@ export default function EditStartupPage() {
     const [loadError, setLoadError] = useState("");
     const [loadingDoc, setLoadingDoc] = useState(true);
     const [submittedByUid, setSubmittedByUid] = useState<string | null>(null);
+    const [listingStatus, setListingStatus] = useState<"pending" | "approved" | "rejected">("approved");
 
     useEffect(() => {
         if (!authLoading && !user) router.replace("/login");
@@ -61,6 +62,7 @@ export default function EditStartupPage() {
                 }
                 const s = parseStartupDocument(snap.data(), snap.id);
                 setSubmittedByUid(s.submittedByUid);
+                setListingStatus(s.status);
                 setName(s.name);
                 setCompanyOverview(s.companyOverview);
                 setFounderStory(s.founderStory);
@@ -87,7 +89,9 @@ export default function EditStartupPage() {
     }, [id]);
 
     const canEdit =
-        !!profile && (isAdmin(profile.role) || (!!submittedByUid && profile.uid === submittedByUid));
+        !!profile &&
+        (canReviewStartupSubmissions(profile.role) ||
+            (!!submittedByUid && profile.uid === submittedByUid && (listingStatus === "pending" || listingStatus === "approved")));
 
     const handleLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
