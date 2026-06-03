@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   description:
     "Babson CODE: Community of Developers and Entrepreneurs. A comprehensive club management platform for governance, project tracking, and collaboration.",
   keywords: ["CODE", "Babson", "club management", "developers", "entrepreneurs"],
+  icons: {
+    icon: "/CODELogo.png",
+    apple: "/CODELogo.png",
+  },
 };
 
 export default function RootLayout({
