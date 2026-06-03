@@ -6,8 +6,10 @@ import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { useAuth } from "@/contexts/auth-context";
-import { deleteStartup, reviewStartupListing, type StartupItem } from "@/hooks/useFirestore";
-import { STARTUP_BUSINESS_CATEGORIES } from "@/lib/startup-gallery";
+import { backfillStartupStatusApproved } from "@/lib/startup-backfill";
+import { deleteStartup, reviewStartupListing } from "@/hooks/useFirestore";
+import type { StartupItem } from "@/lib/startup-document";
+import { isStartupPubliclyVisible, STARTUP_BUSINESS_CATEGORIES } from "@/lib/startup-gallery";
 import { cn } from "@/lib/utils";
 import { Loader2, Rocket, Send, ThumbsDown, ThumbsUp, Trash2, Upload } from "lucide-react";
 
@@ -54,7 +56,14 @@ export function StartupAdminTab({
     );
 
     const pendingProposals = useMemo(() => startups.filter((s) => s.status === "pending"), [startups]);
-    const approvedListings = useMemo(() => startups.filter((s) => s.status === "approved"), [startups]);
+    const approvedListings = useMemo(
+        () => startups.filter((s) => isStartupPubliclyVisible(s.status)),
+        [startups]
+    );
+
+    useEffect(() => {
+        void backfillStartupStatusApproved().catch((err) => console.warn("Startup status backfill:", err));
+    }, []);
 
     const handleStartupLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];

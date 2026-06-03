@@ -32,7 +32,7 @@ export default function FAQPage() {
             <div className="pointer-events-none fixed inset-0 grid-bg opacity-30" />
             <div className="pointer-events-none fixed bottom-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full blur-[120px] bg-primary/10" />
 
-            <PublicNav />
+            <PublicNav alwaysVisible />
 
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 relative z-10">
                 {/* Header */}

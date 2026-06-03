@@ -568,9 +568,9 @@ export default function AdminPage() {
                         Select a module below. Your clearance determines which tiles appear.
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {tabs.map((tab) => (
-                            <button
-                                key={tab.key}
+                {tabs.map((tab) => (
+                    <button
+                        key={tab.key}
                                 type="button"
                                 onClick={() => setActiveTab(tab.key)}
                                 className="group text-left hud-panel bg-card/50 border border-border/50 p-5 sm:p-6 scanlines relative overflow-hidden transition-all hover:border-primary/45 hover:bg-primary/[0.06] hover:shadow-[0_0_24px_rgba(203,247,2,0.12)]"
@@ -617,31 +617,31 @@ export default function AdminPage() {
                         <button
                             key={tab.key}
                             type="button"
-                            onClick={() => setActiveTab(tab.key)}
-                            className={cn(
-                                "flex items-center gap-2.5 px-5 py-3 hud-panel-sm text-[10px] font-mono font-bold uppercase tracking-widest whitespace-nowrap transition-all border shrink-0",
-                                activeTab === tab.key
-                                    ? "bg-primary text-primary-foreground border-primary glow-border shadow-[0_0_15px_rgba(203,247,2,0.3)]"
-                                    : "bg-card/40 border-border/40 text-muted-foreground hover:bg-accent hover:text-foreground"
-                            )}
-                        >
-                            {tab.icon}
-                            {tab.label}
-                            {tab.count !== undefined && tab.count > 0 && (
+                        onClick={() => setActiveTab(tab.key)}
+                        className={cn(
+                            "flex items-center gap-2.5 px-5 py-3 hud-panel-sm text-[10px] font-mono font-bold uppercase tracking-widest whitespace-nowrap transition-all border shrink-0",
+                            activeTab === tab.key
+                                ? "bg-primary text-primary-foreground border-primary glow-border shadow-[0_0_15px_rgba(203,247,2,0.3)]"
+                                : "bg-card/40 border-border/40 text-muted-foreground hover:bg-accent hover:text-foreground"
+                        )}
+                    >
+                        {tab.icon}
+                        {tab.label}
+                        {tab.count !== undefined && tab.count > 0 && (
                                 <span
                                     className={cn(
-                                        "text-[9px] px-1.5 py-0.5 border",
-                                        activeTab === tab.key
-                                            ? "bg-background/20 border-background/40 text-primary-foreground"
-                                            : "bg-primary/10 border-primary/30 text-primary animate-pulse"
+                                "text-[9px] px-1.5 py-0.5 border",
+                                activeTab === tab.key
+                                    ? "bg-background/20 border-background/40 text-primary-foreground"
+                                    : "bg-primary/10 border-primary/30 text-primary animate-pulse"
                                     )}
                                 >
-                                    {tab.count}
-                                </span>
-                            )}
-                        </button>
-                    ))}
-                </div>
+                                {tab.count}
+                            </span>
+                        )}
+                    </button>
+                ))}
+            </div>
             )}
 
             {loading && (
@@ -1008,7 +1008,7 @@ export default function AdminPage() {
                                     <p className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest relative z-10">
                                         NO ROWS MATCH SEARCH.
                                     </p>
-                                </div>
+                                    </div>
                             ) : (
                                 <div className="hud-panel bg-card/40 border border-border/40 p-2 sm:p-4 scanlines overflow-hidden">
                                     <div className="overflow-x-auto custom-scroll -mx-1 px-1 max-h-[min(70vh,720px)] overflow-y-auto">
@@ -1152,27 +1152,27 @@ export default function AdminPage() {
                                                             </td>
                                                             <td className="py-2 pr-3 align-top whitespace-nowrap">
                                                                 {canEditRoleResidency ? (
-                                                                    <select
-                                                                        value={member.role}
-                                                                        onChange={async (e) => {
+                                        <select
+                                            value={member.role}
+                                            onChange={async (e) => {
                                                                             const newRole = e.target.value;
-                                                                            try {
+                                                try {
                                                                                 await updateDoc(doc(db, "users", member.id), {
                                                                                     role: newRole,
                                                                                     updatedAt: serverTimestamp(),
                                                                                 });
-                                                                            } catch (err) {
-                                                                                console.error("Role update error:", err);
-                                                                            }
-                                                                        }}
+                                                } catch (err) {
+                                                    console.error("Role update error:", err);
+                                                }
+                                            }}
                                                                         className="max-w-[140px] text-[9px] font-mono font-bold uppercase tracking-widest px-2 py-1.5 hud-panel-sm bg-background/80 border border-border/50 text-foreground focus:outline-none focus:border-primary/50 cursor-pointer appearance-none"
-                                                                    >
-                                                                        {ALL_ROLES.map((r) => (
+                                        >
+                                            {ALL_ROLES.map((r) => (
                                                                             <option key={r.value} value={r.value}>
                                                                                 {r.label}
                                                                             </option>
-                                                                        ))}
-                                                                    </select>
+                                            ))}
+                                        </select>
                                                                 ) : (
                                                                     <span className="text-primary/90 uppercase">
                                                                         {getRoleLabel(member.role)}
@@ -1321,7 +1321,7 @@ export default function AdminPage() {
                                                                                 Open
                                                                             </a>
                                                                         ) : null}
-                                                                    </div>
+                                    </div>
                                                                 ) : member.linkedin ? (
                                                                     <a
                                                                         href={member.linkedin}
@@ -1456,7 +1456,7 @@ export default function AdminPage() {
                                                 })}
                                             </tbody>
                                         </table>
-                                    </div>
+                                </div>
                                 </div>
                             )}
                         </div>
@@ -1661,7 +1661,7 @@ export default function AdminPage() {
                                                 <li key={line}>{line}</li>
                                             ))}
                                         </ul>
-                                    </div>
+                        </div>
                                 </div>
                             </div>
                             <div className="hud-panel bg-card/40 border border-border/40 overflow-hidden">
@@ -1691,7 +1691,7 @@ export default function AdminPage() {
                                                         <div className="font-semibold text-foreground">{r.name}</div>
                                                         <div className="text-xs text-muted-foreground truncate max-w-[220px]">
                                                             {r.email}
-                                                        </div>
+                </div>
                                                     </td>
                                                     <td className="py-2.5 px-2 text-xs text-muted-foreground whitespace-nowrap">
                                                         {getRoleLabel(r.role)}

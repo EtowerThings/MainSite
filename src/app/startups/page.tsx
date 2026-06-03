@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
     Rocket,
@@ -17,7 +17,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PublicNav } from "@/components/public-nav";
-import { useStartups, deleteStartup, filterPublicStartupListings, type StartupItem } from "@/hooks/useFirestore";
+import { usePublicStartups } from "@/hooks/usePublicStartups";
+import { deleteStartup, type StartupItem } from "@/hooks/useFirestore";
+import { StartupGalleryImage } from "@/components/startup-gallery-image";
 import { useOptionalAuth } from "@/contexts/auth-context";
 import { hrefWebsite, hrefInstagram, hrefLinkedIn } from "@/lib/startup-gallery";
 import { canReviewStartupSubmissions } from "@/lib/roles";
@@ -81,17 +83,11 @@ function StartupDetailModal({
             >
                 <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-primary/5 px-5 py-4 sm:px-6">
                     <div className="flex min-w-0 flex-1 items-start gap-4">
-                        {startup.logoUrl ? (
-                            <img
-                                src={startup.logoUrl}
-                                alt=""
-                                className="h-16 w-16 shrink-0 border border-border/50 object-contain sm:h-20 sm:w-20"
-                            />
-                        ) : (
-                            <div className="flex h-16 w-16 shrink-0 items-center justify-center border border-primary/30 bg-primary/15 text-primary sm:h-20 sm:w-20">
-                                <Rocket className="h-8 w-8" />
-                            </div>
-                        )}
+                        <StartupGalleryImage
+                            src={startup.logoUrl}
+                            className="h-16 w-16 shrink-0 border border-border/50 object-contain sm:h-20 sm:w-20"
+                            fallbackClassName="h-16 w-16 shrink-0 border border-primary/30 sm:h-20 sm:w-20"
+                        />
                         <div className="min-w-0">
                             <p className="text-[10px] font-mono uppercase tracking-widest text-primary/80">{startup.businessCategory}</p>
                             <h2 id={`startup-title-${startup.id}`} className="text-xl font-black uppercase tracking-tight sm:text-2xl">
@@ -221,8 +217,7 @@ function StartupDetailModal({
 }
 
 export default function StartupsGalleryPage() {
-    const { data: allStartups, loading } = useStartups();
-    const startups = useMemo(() => filterPublicStartupListings(allStartups), [allStartups]);
+    const { data: startups, loading, error } = usePublicStartups();
     const { user, profile } = useOptionalAuth();
     const [selected, setSelected] = useState<StartupItem | null>(null);
 
@@ -242,7 +237,7 @@ export default function StartupsGalleryPage() {
             <div className="pointer-events-none fixed inset-0 grid-bg opacity-30" />
             <div className="pointer-events-none fixed top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full blur-[120px] bg-primary/10" />
 
-            <PublicNav />
+            <PublicNav alwaysVisible />
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 relative z-10">
                 <div className="text-center mb-12 sm:mb-16 animate-fade-in">
@@ -277,14 +272,20 @@ export default function StartupsGalleryPage() {
                     </div>
                 )}
 
-                {!loading && startups.length === 0 && (
+                {error && (
+                    <div className="text-center py-12 hud-panel bg-destructive/5 border border-destructive/40 max-w-2xl mx-auto px-4">
+                        <p className="text-xs font-mono text-destructive">{error}</p>
+                    </div>
+                )}
+
+                {!loading && !error && startups.length === 0 && (
                     <div className="text-center py-20 hud-panel bg-card/40 border border-border/50 max-w-2xl mx-auto scanlines">
                         <Rocket className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4 relative z-10" />
                         <p className="text-xs font-mono text-muted-foreground tracking-widest uppercase relative z-10">No startups found in archive.</p>
                     </div>
                 )}
 
-                {!loading && startups.length > 0 && (
+                {!loading && !error && startups.length > 0 && (
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
                         {startups.map((startup, i) => (
                             <button
@@ -304,17 +305,12 @@ export default function StartupsGalleryPage() {
                                             "flex h-[4.5rem] w-[4.5rem] items-center justify-center sm:h-[5rem] sm:w-[5rem]"
                                         )}
                                     >
-                                        {startup.logoUrl ? (
-                                            <img
-                                                src={startup.logoUrl}
-                                                alt=""
-                                                className="h-full w-full object-contain p-2 transition-transform group-hover:scale-[1.03]"
-                                            />
-                                        ) : (
-                                            <div className="flex h-full w-full items-center justify-center bg-primary/10 text-primary">
-                                                <Rocket className="h-8 w-8 opacity-90 sm:h-9 sm:w-9" />
-                                            </div>
-                                        )}
+                                        <StartupGalleryImage
+                                            src={startup.logoUrl}
+                                            className="h-full w-full object-contain p-2 transition-transform group-hover:scale-[1.03]"
+                                            fallbackClassName="h-full w-full"
+                                            iconClassName="h-8 w-8 sm:h-9 sm:w-9"
+                                        />
                                     </div>
                                     <div className="min-w-0 flex-1 pt-0.5">
                                         <p className="text-[10px] font-mono uppercase tracking-widest text-primary/80 line-clamp-2 sm:line-clamp-1">
@@ -332,7 +328,12 @@ export default function StartupsGalleryPage() {
                                         {(startup.submitterName || startup.submitterGraduationYear) && (
                                             <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-primary/80">
                                                 {startup.submitterPhotoURL && (
-                                                    <img src={startup.submitterPhotoURL} alt="" className="h-7 w-7 border border-primary/30 object-cover" />
+                                                    <StartupGalleryImage
+                                                        src={startup.submitterPhotoURL}
+                                                        className="h-7 w-7 border border-primary/30 object-cover"
+                                                        fallbackClassName="h-7 w-7 border border-primary/30"
+                                                        iconClassName="h-3.5 w-3.5"
+                                                    />
                                                 )}
                                                 <span>
                                                     {startup.submitterName}
