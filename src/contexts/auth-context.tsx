@@ -13,6 +13,7 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { parseClubRole, parseResidency, type ResidencyType } from "@/lib/member-residency";
+import { syncPlatformStats } from "@/lib/platform-stats";
 
 export type UserRole =
     | "member"
@@ -174,6 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         engagementMetrics: undefined,
                     });
                 }
+                void syncPlatformStats().catch((err) => console.warn("Platform stats sync:", err));
             } else {
                 setProfile(null);
                 setNeedsOnboarding(false);

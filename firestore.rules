@@ -1,169 +1,175 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    
-    // Helper functions for role-based access
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
-    function userExists() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      
+      // Helper functions for role-based access
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      
+      function userExists() {
+        return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      }
 
-    function userRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-    }
-    
-    function isAdmin() {
-      return isSignedIn() && userExists() &&
-        userRole() in ['president', 'vice-president', 'community-manager'];
-    }
+      function userRole() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      }
+      
+      function isAdmin() {
+        return isSignedIn() && userExists() &&
+          userRole() in ['president', 'vice-president', 'community-manager'];
+      }
 
-    function isVpRole() {
-      return userExists() && userRole() in ['vp-events', 'vp-marketing', 'vp-prof-dev', 'vp-finance', 'vp-recruitment', 'vp-outreach'];
-    }
+      function isVpRole() {
+        return userExists() && userRole() in ['vp-events', 'vp-marketing', 'vp-prof-dev', 'vp-finance', 'vp-recruitment', 'vp-outreach'];
+      }
 
-    /** Core admins, functional VPs, or recruitment/outreach team (announcements, budgets). */
-    function canPostAnnouncement() {
-      return isSignedIn() && userExists() && (
-        isAdmin() || isVpRole() || userRole() in ['recruitment', 'outreach']
-      );
-    }
-    
-    function canEditEvents() {
-      return isSignedIn() && userExists() &&
-        (isAdmin() || userRole() == 'events' || userRole() == 'vp-events');
-    }
+      /** Core admins, functional VPs, or recruitment/outreach team (announcements, budgets). */
+      function canPostAnnouncement() {
+        return isSignedIn() && userExists() && (
+          isAdmin() || isVpRole() || userRole() in ['recruitment', 'outreach']
+        );
+      }
+      
+      function canEditEvents() {
+        return isSignedIn() && userExists() &&
+          (isAdmin() || userRole() == 'events' || userRole() == 'vp-events');
+      }
 
-    /** Core e-board: executives + functional VPs (not recruitment/outreach team leads alone). */
-    function isEboardMember() {
-      return isSignedIn() && userExists() && (isAdmin() || isVpRole());
-    }
+      /** Core e-board: executives + functional VPs (not recruitment/outreach team leads alone). */
+      function isEboardMember() {
+        return isSignedIn() && userExists() && (isAdmin() || isVpRole());
+      }
 
-    function isEboardTaskAssignee() {
-      return isSignedIn() &&
-        resource.data.assigneeUids is list &&
-        request.auth.uid in resource.data.assigneeUids;
-    }
+      function isEboardTaskAssignee() {
+        return isSignedIn() &&
+          resource.data.assigneeUids is list &&
+          request.auth.uid in resource.data.assigneeUids;
+      }
 
-    function startupIsPublic() {
-      return !('status' in resource.data) || resource.data.status == 'approved';
-    }
+      function startupIsPublic() {
+        return !('status' in resource.data) || resource.data.status == 'approved';
+      }
 
-    function isStartupSubmitter() {
-      return isSignedIn() && resource.data.submittedByUid == request.auth.uid;
-    }
+      function isStartupSubmitter() {
+        return isSignedIn() && resource.data.submittedByUid == request.auth.uid;
+      }
 
-    match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow delete: if isAdmin();
-    }
+      match /users/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.auth.uid == userId;
+        allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow delete: if isAdmin();
+      }
 
-    match /invites/{inviteId} {
-      // Allow anyone with the link to read it (for registration), but only admins can create/manage
-      allow read: if true;
-      allow create, update, delete: if isAdmin();
-    }
+      match /invites/{inviteId} {
+        // Allow anyone with the link to read it (for registration), but only admins can create/manage
+        allow read: if true;
+        allow create, update, delete: if isAdmin();
+      }
 
-    match /activityFeed/{feedId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdmin();
-    }
+      match /activityFeed/{feedId} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
+      }
 
-    match /announcements/{announcementId} {
-      allow read: if isSignedIn();
-      allow write: if canPostAnnouncement();
-    }
+      match /announcements/{announcementId} {
+        allow read: if isSignedIn();
+        allow write: if canPostAnnouncement();
+      }
 
-    match /budgets/{budgetId} {
-      allow read: if isSignedIn();
-      allow create, update, delete: if canPostAnnouncement();
-    }
+      match /budgets/{budgetId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if canPostAnnouncement();
+      }
 
-    match /events/{eventId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn(); // Allows members to RSVP
-      allow delete: if canEditEvents(); // Admin, events role, or VP Events
-    }
+      match /events/{eventId} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn(); // Allows members to RSVP
+        allow delete: if canEditEvents(); // Admin, events role, or VP Events
+      }
 
-    match /resources/{resourceId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn(); // Members can upload for approval
-      allow update, delete: if isAdmin(); // Admins handle approval/rejection
-    }
+      match /resources/{resourceId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn(); // Members can upload for approval
+        allow update, delete: if isAdmin(); // Admins handle approval/rejection
+      }
 
-    match /projects/{projectId} {
-      allow read: if true;
-      allow create, update: if isSignedIn();
-      allow delete: if isAdmin();
-    }
+      match /projects/{projectId} {
+        allow read: if true;
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
+      }
 
-    match /inquiries/{inquiryId} {
-      allow read: if true;
-      allow create: if true; // Anyone (even public) can submit inquiries
-      allow update, delete: if isAdmin();
-    }
+      match /inquiries/{inquiryId} {
+        allow read: if true;
+        allow create: if true; // Anyone (even public) can submit inquiries
+        allow update, delete: if isAdmin();
+      }
 
-    match /faq/{faqId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
+      match /faq/{faqId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
 
-    match /actionItems/{itemId} {
-      allow read: if isSignedIn();
-      allow update: if isSignedIn(); // members can mark as completed
-      allow create, delete: if isAdmin(); // only admins can create tasks
-    }
+      match /actionItems/{itemId} {
+        allow read: if isSignedIn();
+        allow update: if isSignedIn(); // members can mark as completed
+        allow create, delete: if isAdmin(); // only admins can create tasks
+      }
 
-    match /startups/{startupId} {
-      allow read: if startupIsPublic() || isEboardMember() || isStartupSubmitter();
-      allow create: if (
-        isEboardMember() && request.resource.data.status == 'approved'
-      ) || (
-        isSignedIn() && userExists() &&
-        request.resource.data.submittedByUid == request.auth.uid &&
-        request.resource.data.status == 'pending'
-      );
-      allow update: if isEboardMember() || (
-        isSignedIn() && userExists() &&
-        isStartupSubmitter() &&
-        request.resource.data.submittedByUid == request.auth.uid &&
-        (
-          (resource.data.status == 'pending' && request.resource.data.status == 'pending') ||
-          (resource.data.status == 'approved' && request.resource.data.status == 'approved')
-        )
-      );
-      allow delete: if isEboardMember() || (
-        isSignedIn() && userExists() &&
-        isStartupSubmitter() &&
-        resource.data.status == 'pending'
-      );
-    }
+      match /startups/{startupId} {
+        allow read: if startupIsPublic() || isEboardMember() || isStartupSubmitter();
+        allow create: if (
+          isEboardMember() && request.resource.data.status == 'approved'
+        ) || (
+          isSignedIn() && userExists() &&
+          request.resource.data.submittedByUid == request.auth.uid &&
+          request.resource.data.status == 'pending'
+        );
+        allow update: if isEboardMember() || (
+          isSignedIn() && userExists() &&
+          isStartupSubmitter() &&
+          request.resource.data.submittedByUid == request.auth.uid &&
+          (
+            (resource.data.status == 'pending' && request.resource.data.status == 'pending') ||
+            (resource.data.status == 'approved' && request.resource.data.status == 'approved')
+          )
+        );
+        allow delete: if isEboardMember() || (
+          isSignedIn() && userExists() &&
+          isStartupSubmitter() &&
+          resource.data.status == 'pending'
+        );
+      }
 
-    /** Club-wide display settings (fiscal term label for budgets, dashboard, etc.). */
-    match /orgSettings/{docId} {
-      allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-    }
+      /** Club-wide display settings (fiscal term label for budgets, dashboard, etc.). */
+      match /orgSettings/{docId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isAdmin();
+      }
 
-    /** E-board shared tasks (assignees may mark status / completion only). */
-    match /eboardTasks/{taskId} {
-      allow read: if isEboardMember() || isEboardTaskAssignee();
-      allow create, delete: if isEboardMember();
-      allow update: if isEboardMember() || (
-        isEboardTaskAssignee() &&
-        request.resource.data.diff(resource.data).changedKeys()
-          .hasOnly(['status', 'completedAt', 'updatedAt'])
-      );
-    }
+      /** Public landing-page counts (member + startup totals). Anyone can read; signed-in members refresh. */
+      match /platformStats/{docId} {
+        allow read: if true;
+        allow create, update: if isSignedIn();
+      }
 
-    /** E-board-only calendar entries (meetings, deadlines, milestones). */
-    match /eboardCalendarEvents/{eventId} {
-      allow read, create, update, delete: if isEboardMember();
+      /** E-board shared tasks (assignees may mark status / completion only). */
+      match /eboardTasks/{taskId} {
+        allow read: if isEboardMember() || isEboardTaskAssignee();
+        allow create, delete: if isEboardMember();
+        allow update: if isEboardMember() || (
+          isEboardTaskAssignee() &&
+          request.resource.data.diff(resource.data).changedKeys()
+            .hasOnly(['status', 'completedAt', 'updatedAt'])
+        );
+      }
+
+      /** E-board-only calendar entries (meetings, deadlines, milestones). */
+      match /eboardCalendarEvents/{eventId} {
+        allow read, create, update, delete: if isEboardMember();
+      }
     }
   }
-}

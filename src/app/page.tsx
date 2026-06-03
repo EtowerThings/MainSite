@@ -18,11 +18,13 @@ import { PublicNav } from "@/components/public-nav";
 import { BootSequence } from "@/components/boot-sequence";
 import { useOptionalAuth } from "@/contexts/auth-context";
 import { useProjects, useDashboardStats } from "@/hooks/useFirestore";
+import { usePublicPlatformStats } from "@/hooks/usePublicPlatformStats";
 import Image from "next/image";
 
 export default function LandingPage() {
   const { user } = useOptionalAuth();
   const { data: projects, loading: projectsLoading } = useProjects();
+  const { stats: platformStats, loading: platformStatsLoading } = usePublicPlatformStats();
   const { stats: dashboardStats, loading: statsLoading } = useDashboardStats();
   const featuredProject = projects?.[0];
 
@@ -36,7 +38,22 @@ export default function LandingPage() {
   ];
 
   const stats = [
-    { label: "ACTIVE_USERS", value: statsLoading ? "—" : user ? String(dashboardStats.totalMembers) : "—", unit: "members" },
+    {
+      label: "ACTIVE_USERS",
+      value:
+        platformStatsLoading || platformStats.totalMembers === null
+          ? "—"
+          : String(platformStats.totalMembers),
+      unit: "on platform",
+    },
+    {
+      label: "STARTUPS",
+      value:
+        platformStatsLoading || platformStats.totalStartups === null
+          ? "—"
+          : String(platformStats.totalStartups),
+      unit: "in gallery",
+    },
     { label: "PROJECTS_SHIPPED", value: statsLoading ? "—" : String(dashboardStats.totalProjects), unit: "deployed" },
     { label: "RESOURCES_DB", value: statsLoading ? "—" : user ? String(dashboardStats.totalResources) : "—", unit: "indexed" },
     { label: "ACTIVE_PROJECTS", value: statsLoading ? "—" : String(dashboardStats.activeProjects), unit: "in progress" },
