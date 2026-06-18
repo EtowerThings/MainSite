@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Projects — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="projects" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <header class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+      <div>
+        <p class="badge-pill">Project ecosystem</p>
+        <h1>Projects</h1>
+        <p>Internal builds, client work, and hall-of-fame candidates.</p>
+      </div>
+      <a href="project-new.html" class="btn btn--solid">+ New project</a>
+    </header>
+    <div class="card-grid" id="projects-grid"></div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("projects-grid").innerHTML = CODE_DEMO.projects.map((p) => `
+      <article class="card hud">
+        <span class="badge-pill">${p.status}</span>
+        <h3>${p.name}</h3>
+        <p>${p.desc}</p>
+        <p class="text-muted" style="margin-top:8px;">${p.members} members</p>
+        <a href="project-detail.html" class="btn" style="margin-top:16px;">Open →</a>
+      </article>`).join("");
+  </script>
+</body>
+</html>

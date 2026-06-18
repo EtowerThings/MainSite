@@ -324,7 +324,7 @@ export default function AdminPage() {
         const q = rosterSearch.toLowerCase().trim();
         if (!q) return members;
         return members.filter((m) => {
-            const roleLabel = getRoleLabel(m.role).toLowerCase();
+            const roleLabel = getRoleLabel(m.role, profile?.role).toLowerCase();
             const resLabel = getResidencyLabel(m.residency).toLowerCase();
             const skillsBlob = (m.skills || []).join(" ").toLowerCase();
             const hay = [
@@ -358,7 +358,7 @@ export default function AdminPage() {
                 csvEscape(m.name),
                 csvEscape(m.email),
                 csvEscape(m.role),
-                csvEscape(getRoleLabel(m.role)),
+                csvEscape(getRoleLabel(m.role, profile?.role)),
                 csvEscape(m.residency),
                 csvEscape(getResidencyLabel(m.residency)),
                 csvEscape(m.status),
@@ -1175,7 +1175,7 @@ export default function AdminPage() {
                                         </select>
                                                                 ) : (
                                                                     <span className="text-primary/90 uppercase">
-                                                                        {getRoleLabel(member.role)}
+                                                                        {getRoleLabel(member.role, profile?.role)}
                                                                     </span>
                                                                 )}
                                                             </td>
@@ -1694,7 +1694,7 @@ export default function AdminPage() {
                 </div>
                                                     </td>
                                                     <td className="py-2.5 px-2 text-xs text-muted-foreground whitespace-nowrap">
-                                                        {getRoleLabel(r.role)}
+                                                        {getRoleLabel(r.role, profile?.role)}
                                                     </td>
                                                     <td className="py-2.5 px-2 text-right tabular-nums font-mono text-xs">
                                                         {r.attendanceSessionPoints > 0 ? "+" : ""}
@@ -1790,7 +1790,7 @@ export default function AdminPage() {
                                                             </div>
                                                         </td>
                                                         <td className="py-2.5 px-2 text-xs text-muted-foreground whitespace-nowrap">
-                                                            {getRoleLabel(m.role)}
+                                                            {getRoleLabel(m.role, profile?.role)}
                                                         </td>
                                                         <td className="py-2.5 px-2 text-[10px] font-mono uppercase text-muted-foreground">
                                                             {m.status}
@@ -1856,7 +1856,7 @@ export default function AdminPage() {
                                                             </div>
                                                         </td>
                                                         <td className="py-2.5 px-2 text-xs text-muted-foreground whitespace-nowrap">
-                                                            {getRoleLabel(m.role)}
+                                                            {getRoleLabel(m.role, profile?.role)}
                                                         </td>
                                                         <td className="py-2.5 px-2 text-[10px] font-mono uppercase text-muted-foreground">
                                                             {m.status}
@@ -1912,7 +1912,7 @@ export default function AdminPage() {
                                                     {entry.people.map((p) => (
                                                         <li key={p.id} className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest px-2 py-1 hud-panel-sm border border-border/40 bg-card/60">
                                                             {p.name}
-                                                            <span className="text-muted-foreground/70 ml-1">({getRoleLabel(p.role)})</span>
+                                                            <span className="text-muted-foreground/70 ml-1">({getRoleLabel(p.role, profile?.role)})</span>
                                                         </li>
                                                     ))}
                                                 </ul>

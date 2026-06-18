@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Propose Startup — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="startups-submit" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content" style="max-width:40rem;">
+    <header class="page-head">
+      <p class="badge-pill">Gallery proposal</p>
+      <h1>Propose your startup</h1>
+      <p>E-board reviews before public listing on the alumni gallery.</p>
+    </header>
+    <form class="hud" style="padding:24px;" onsubmit="event.preventDefault();alert('Demo: proposal submitted for review');location.href='startups.html'">
+      <div class="form-group"><label>Startup name</label><input class="form-input" value="CampusPay" /></div>
+      <div class="form-group"><label>Category</label><input class="form-input" value="FinTech" /></div>
+      <div class="form-group"><label>Founded year</label><input class="form-input" value="2024" /></div>
+      <div class="form-group"><label>Overview</label><textarea class="form-textarea">Club dues and peer payments with instant reconciliation.</textarea></div>
+      <div class="form-group"><label>Founder story</label><textarea class="form-textarea">Built by CODE finance leads during S25.</textarea></div>
+      <button type="submit" class="btn btn--solid">Submit for approval</button>
+      <a href="startups.html" class="btn" style="margin-left:8px;">Cancel</a>
+    </form>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

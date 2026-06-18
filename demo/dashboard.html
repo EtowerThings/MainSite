@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="dashboard" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <header class="dash-header">
+      <p style="font-family:var(--mono);font-size:10px;color:var(--primary);letter-spacing:0.15em;margin-bottom:4px;">FISCAL <span id="fiscal-label"></span></p>
+      <h1>Command Center</h1>
+      <p>Welcome back, <span data-demo-user-name></span> · <span data-demo-clearance></span> clearance</p>
+    </header>
+    <div class="dash-cards" id="dash-cards"></div>
+    <div class="dash-panels">
+      <section class="panel hud">
+        <h3>Activity feed</h3>
+        <div id="dash-feed"></div>
+      </section>
+      <section class="panel hud" data-admin-only-block hidden>
+        <h3>Admin quick access</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <a href="admin.html#announcements" class="btn" style="justify-content:center;">Broadcasts</a>
+          <a href="admin.html#budgets" class="btn" style="justify-content:center;">Budgets</a>
+          <a href="admin.html#applications" class="btn" style="justify-content:center;">Applications</a>
+          <a href="admin.html#startups" class="btn" style="justify-content:center;">Startup queue</a>
+          <a href="admin.html#eventAttendance" class="btn" style="justify-content:center;">Event attendance</a>
+        </div>
+      </section>
+      <section class="panel hud" data-member-only-block>
+        <h3>Your next steps</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <a href="events.html" class="btn" style="justify-content:center;">RSVP to GM</a>
+          <a href="projects.html" class="btn" style="justify-content:center;">View projects</a>
+          <a href="startups-submit.html" class="btn" style="justify-content:center;">Propose startup</a>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const s = CODE_DEMO.stats;
+    document.getElementById("fiscal-label").textContent = CODE_DEMO.fiscal.label;
+    document.getElementById("dash-cards").innerHTML = `
+      <div class="dash-card hud"><div class="dash-card__val">${s.members}</div><div class="dash-card__label">Members</div></div>
+      <div class="dash-card hud"><div class="dash-card__val">${s.activeProjects}</div><div class="dash-card__label">Active projects</div></div>
+      <div class="dash-card hud"><div class="dash-card__val">${s.pendingApps}</div><div class="dash-card__label">Pending apps</div></div>
+      <div class="dash-card hud"><div class="dash-card__val">${CODE_DEMO.admin.pendingStartups.length}</div><div class="dash-card__label">Startup proposals</div></div>
+      <div class="dash-card hud"><div class="dash-card__val">94%</div><div class="dash-card__label">Last event attendance</div></div>`;
+    document.getElementById("dash-feed").innerHTML = CODE_DEMO.feed.map((f) => `
+      <div class="feed-item"><strong>${f.type}</strong> — ${f.text}<time>${f.time}</time></div>`).join("");
+  </script>
+</body>
+</html>

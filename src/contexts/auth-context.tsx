@@ -25,6 +25,8 @@ export type UserRole =
     | "vice-president"
     | "president"
     | "community-manager"
+    /** Hidden super-admin — assign only via Firestore console. */
+    | "root"
     | "vp-events"
     | "vp-marketing"
     | "vp-prof-dev"

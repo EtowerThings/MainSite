@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Onboarding — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="onboarding" data-layout="public">
+  <div class="grid-bg"></div>
+  <main class="page container" id="page-content" style="max-width:32rem;padding:48px 20px 80px;">
+    <span class="badge-pill">New member setup</span>
+    <h1 style="font-size:2rem;font-weight:900;margin-bottom:8px;">Complete your profile</h1>
+    <p class="text-muted" style="margin-bottom:32px;">Pending e-board approval after submission.</p>
+    <form class="hud" style="padding:24px;" onsubmit="event.preventDefault();alert('Demo: profile submitted');location.href='dashboard.html'">
+      <div class="form-group"><label>Display name</label><input class="form-input" value="Jordan Kim" /></div>
+      <div class="form-group"><label>Graduation year</label><input class="form-input" value="2027" /></div>
+      <div class="form-group"><label>Standout skill</label><input class="form-input" value="React / UI" /></div>
+      <div class="form-group"><label>LinkedIn</label><input class="form-input" value="linkedin.com/in/jordankim" /></div>
+      <div class="form-group"><label>Bio</label><textarea class="form-textarea">CS + entrepreneurship. Building at CODE.</textarea></div>
+      <button type="submit" class="btn btn--solid">Submit for approval</button>
+    </form>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

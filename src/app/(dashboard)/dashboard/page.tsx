@@ -122,7 +122,7 @@ export default function DashboardPage() {
                         <span className="text-primary mr-2">&gt;</span> STATUS: OPERATIONAL
                     </p>
                     <p className="relative z-10 text-[10px] text-muted-foreground font-mono uppercase tracking-wider">
-                        <span className="text-primary mr-2">&gt;</span> CLR: {getRoleLabel(profile?.role ?? "member")} ·{" "}
+                        <span className="text-primary mr-2">&gt;</span> CLR: {getRoleLabel(profile?.role ?? "member", profile?.role)} ·{" "}
                         {getResidencyLabel(profile?.residency ?? "resident")}
                     </p>
                 </div>

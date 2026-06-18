@@ -1,365 +1,83 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import {
-    Rocket,
-    Users,
-    Loader2,
-    Database,
-    Instagram,
-    Linkedin,
-    Globe,
-    X,
-    Sparkles,
-    Pencil,
-    Trash2,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { PublicNav } from "@/components/public-nav";
-import { usePublicStartups } from "@/hooks/usePublicStartups";
-import { deleteStartup, type StartupItem } from "@/hooks/useFirestore";
-import { StartupGalleryImage } from "@/components/startup-gallery-image";
-import { useOptionalAuth } from "@/contexts/auth-context";
-import { hrefWebsite, hrefInstagram, hrefLinkedIn } from "@/lib/startup-gallery";
-import { canReviewStartupSubmissions } from "@/lib/roles";
+import Image from "next/image";
+import { ExternalLink } from "lucide-react";
+import { EtowerNav } from "@/components/etower-nav";
+import { EtowerFooter } from "@/components/etower-footer";
+import { FadeIn } from "@/components/fade-in";
+import { FEATURED_STARTUPS, HERO_GALLERY_BUSINESSES } from "@/lib/demo-data";
 
-function StartupDetailModal({
-    startup,
-    onClose,
-    canManage,
-    onDeleted,
-}: {
-    startup: StartupItem;
-    onClose: () => void;
-    canManage: boolean;
-    onDeleted?: () => void;
-}) {
-    const web = hrefWebsite(startup.website);
-    const ig = hrefInstagram(startup.instagramUrl);
-    const li = hrefLinkedIn(startup.linkedinCompanyUrl);
-    const [deleting, setDeleting] = useState(false);
+export default function StartupsPage() {
+  return (
+    <div className="etower-page min-h-screen">
+      <EtowerNav />
+      <main className="pt-8 pb-0">
+        <section className="py-16 px-4 sm:px-6">
+          <div className="max-w-6xl mx-auto">
+            <FadeIn>
+              <p className="etower-section-label mb-3">Featured Startups</p>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-[#0A111F] tracking-tight">
+                Ventures from our community
+              </h1>
+              <p className="mt-4 text-[#64748b] max-w-2xl leading-relaxed">
+                Discover innovative companies founded by eTower residents and alumni.
+              </p>
+            </FadeIn>
 
-    const handleDelete = async () => {
-        if (!canManage) return;
-        if (!confirm(`Remove “${startup.name}” from the gallery? This cannot be undone.`)) return;
-        setDeleting(true);
-        try {
-            await deleteStartup(startup.id);
-            onDeleted?.();
-            onClose();
-        } catch (e) {
-            console.error(e);
-            alert(e instanceof Error ? e.message : "Could not delete.");
-        } finally {
-            setDeleting(false);
-        }
-    };
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [onClose]);
-
-    return (
-        <div
-            className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-fade-in"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={`startup-title-${startup.id}`}
-        >
-            <button
-                type="button"
-                className="absolute inset-0 bg-background/85 backdrop-blur-sm"
-                onClick={onClose}
-                aria-label="Close"
-            />
-            <div
-                className="relative z-10 flex max-h-[min(92vh,880px)] w-full max-w-2xl flex-col overflow-hidden border border-primary/40 bg-card shadow-[0_0_60px_color-mix(in_oklch,var(--primary)_12%,transparent)] hud-panel scanlines"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-primary/5 px-5 py-4 sm:px-6">
-                    <div className="flex min-w-0 flex-1 items-start gap-4">
-                        <StartupGalleryImage
-                            src={startup.logoUrl}
-                            className="h-16 w-16 shrink-0 border border-border/50 object-contain sm:h-20 sm:w-20"
-                            fallbackClassName="h-16 w-16 shrink-0 border border-primary/30 sm:h-20 sm:w-20"
-                        />
-                        <div className="min-w-0">
-                            <p className="text-[10px] font-mono uppercase tracking-widest text-primary/80">{startup.businessCategory}</p>
-                            <h2 id={`startup-title-${startup.id}`} className="text-xl font-black uppercase tracking-tight sm:text-2xl">
-                                {startup.name}
-                            </h2>
-                            <p className="mt-1 text-xs font-mono text-muted-foreground">Founded {startup.foundedYear}</p>
-                        </div>
+            <div className="mt-14 grid md:grid-cols-3 gap-8">
+              {FEATURED_STARTUPS.map((s, i) => (
+                <FadeIn key={s.id} delay={i * 100}>
+                  <article className="etower-startup-card p-8 flex flex-col h-full">
+                    <div className="w-16 h-16 rounded-2xl etower-gradient flex items-center justify-center text-white text-2xl font-bold mb-6 shadow-lg">
+                      {s.initial}
                     </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="shrink-0 rounded-sm border border-border/60 p-2 text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
-                </div>
-
-                <div className="custom-scroll flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-                    {(web || ig || li) && (
-                        <div className="mb-6 flex flex-wrap gap-2">
-                            {web && (
-                                <a
-                                    href={web}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 border border-border/50 bg-background/60 px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-primary transition-colors hover:border-primary/50"
-                                >
-                                    <Globe className="h-3.5 w-3.5" /> Website
-                                </a>
-                            )}
-                            {ig && (
-                                <a
-                                    href={ig}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 border border-border/50 bg-background/60 px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-primary transition-colors hover:border-primary/50"
-                                >
-                                    <Instagram className="h-3.5 w-3.5" /> Instagram
-                                </a>
-                            )}
-                            {li && (
-                                <a
-                                    href={li}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 border border-border/50 bg-background/60 px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-primary transition-colors hover:border-primary/50"
-                                >
-                                    <Linkedin className="h-3.5 w-3.5" /> LinkedIn
-                                </a>
-                            )}
-                        </div>
-                    )}
-
-                    <section className="mb-6">
-                        <h3 className="mb-2 text-[10px] font-mono font-bold uppercase tracking-widest text-primary">Company overview</h3>
-                        <p className="whitespace-pre-wrap text-sm font-mono leading-relaxed text-foreground/90">{startup.companyOverview || "—"}</p>
-                    </section>
-
-                    <section className="mb-6">
-                        <h3 className="mb-2 text-[10px] font-mono font-bold uppercase tracking-widest text-primary">Founder story</h3>
-                        <p className="whitespace-pre-wrap text-sm font-mono leading-relaxed text-muted-foreground">{startup.founderStory || "—"}</p>
-                    </section>
-
-                    <section className="mb-6 border-t border-border/30 pt-6">
-                        <h3 className="mb-2 flex items-center gap-2 text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground">
-                            <Users className="h-3.5 w-3.5" /> Founding team
-                        </h3>
-                        <p className="text-sm font-mono text-foreground/90">{startup.founders}</p>
-                    </section>
-
-                    {(startup.submitterName || startup.submitterPhotoURL || startup.submittedByUid) && (
-                        <section className="rounded-sm border border-primary/25 bg-primary/5 p-4">
-                            <h3 className="mb-3 flex items-center gap-2 text-[10px] font-mono font-bold uppercase tracking-widest text-primary">
-                                <Sparkles className="h-3.5 w-3.5" /> CODE founder
-                            </h3>
-                            <div className="flex items-center gap-4">
-                                {startup.submitterPhotoURL ? (
-                                    <img
-                                        src={startup.submitterPhotoURL}
-                                        alt=""
-                                        className="h-16 w-16 shrink-0 border border-primary/30 object-cover sm:h-20 sm:w-20"
-                                    />
-                                ) : (
-                                    <div className="flex h-16 w-16 shrink-0 items-center justify-center border border-border/50 bg-background font-mono text-lg font-black text-muted-foreground sm:h-20 sm:w-20">
-                                        {(startup.submitterName || "?").slice(0, 1).toUpperCase()}
-                                    </div>
-                                )}
-                                <div>
-                                    <p className="font-bold font-mono uppercase tracking-tight">
-                                        {startup.submitterName?.trim() || "CODE member"}
-                                    </p>
-                                    {startup.submitterGraduationYear && (
-                                        <p className="mt-1 text-xs font-mono text-muted-foreground">Class of {startup.submitterGraduationYear}</p>
-                                    )}
-                                    <p className="mt-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/80">
-                                        Listed member at submission
-                                    </p>
-                                </div>
-                            </div>
-                        </section>
-                    )}
-
-                    {canManage && (
-                        <div className="mt-6 flex flex-wrap gap-3 border-t border-border/40 pt-6">
-                            <Link
-                                href={`/startups/edit/${startup.id}`}
-                                onClick={onClose}
-                                className="inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 border border-primary/50 bg-primary/10 px-4 py-2.5 text-[10px] font-mono font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/20 sm:flex-none"
-                            >
-                                <Pencil className="h-3.5 w-3.5" /> Edit listing
-                            </Link>
-                            <button
-                                type="button"
-                                disabled={deleting}
-                                onClick={handleDelete}
-                                className="inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 border border-destructive/50 bg-destructive/10 px-4 py-2.5 text-[10px] font-mono font-bold uppercase tracking-widest text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 sm:flex-none"
-                            >
-                                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                                {deleting ? "Removing…" : "Delete"}
-                            </button>
-                        </div>
-                    )}
-                </div>
+                    <span className="etower-startup-badge w-fit mb-3">{s.category}</span>
+                    <h2 className="text-xl font-bold text-[#0A111F]">{s.name}</h2>
+                    <p className="mt-3 text-sm text-[#64748b] flex-1 leading-relaxed">{s.overview}</p>
+                    <p className="mt-5 text-sm border-t border-[#0A111F]/8 pt-5">
+                      <span className="font-semibold text-[#0A111F]">Founded by</span>{" "}
+                      <span className="text-[#64748b]">{s.founder}</span>
+                    </p>
+                    <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[#5aad4a]">
+                      Visit
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </span>
+                  </article>
+                </FadeIn>
+              ))}
             </div>
-        </div>
-    );
-}
+          </div>
+        </section>
 
-export default function StartupsGalleryPage() {
-    const { data: startups, loading, error } = usePublicStartups();
-    const { user, profile } = useOptionalAuth();
-    const [selected, setSelected] = useState<StartupItem | null>(null);
-
-    const closeModal = useCallback(() => setSelected(null), []);
-
-    const canManageStartup = useCallback(
-        (s: StartupItem) =>
-            !!user &&
-            !!profile &&
-            (canReviewStartupSubmissions(profile.role) ||
-                (!!s.submittedByUid && s.submittedByUid === user.uid && s.status === "approved")),
-        [user, profile]
-    );
-
-    return (
-        <div className="min-h-screen bg-background relative overflow-hidden">
-            <div className="pointer-events-none fixed inset-0 grid-bg opacity-30" />
-            <div className="pointer-events-none fixed top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full blur-[120px] bg-primary/10" />
-
-            <PublicNav alwaysVisible />
-
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 relative z-10">
-                <div className="text-center mb-12 sm:mb-16 animate-fade-in">
-                    <div className="inline-flex items-center gap-2 hud-panel-sm bg-background/50 border border-primary/30 text-primary px-4 py-1.5 text-xs font-mono tracking-widest uppercase mb-6 shadow-sm">
-                        <Database className="w-3.5 h-3.5" />
-                        CODE Alumni Startups
+        <section className="py-16 px-4 sm:px-6 bg-[#f8faf9]">
+          <div className="max-w-6xl mx-auto">
+            <FadeIn>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#0A111F]">All community ventures</h2>
+              <p className="mt-3 text-[#64748b]">Startups built by current and former eTower residents.</p>
+            </FadeIn>
+            <div className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              {HERO_GALLERY_BUSINESSES.map((biz, i) => (
+                <FadeIn key={biz.id} delay={i * 30}>
+                  <div className="etower-card p-4 text-center">
+                    <div className="h-12 flex items-center justify-center mb-3">
+                      <Image
+                        src={biz.logo}
+                        alt={biz.name}
+                        width={80}
+                        height={32}
+                        className="max-h-10 w-auto object-contain"
+                        unoptimized
+                      />
                     </div>
-                    <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tighter uppercase">
-                        Startup <span className="gradient-text-cyber animate-flicker">Gallery</span>
-                    </h1>
-                    <div className="mt-6 flex flex-col items-center justify-center gap-4 sm:flex-row">
-                        <div className="hud-panel border border-border/50 bg-card/60 px-6 py-3 scanlines">
-                            <p className="relative z-10 text-muted-foreground text-sm font-mono tracking-wider">
-                                <span className="text-primary font-bold">&gt;</span> Click a card for full story, links, and CODE founder.
-                            </p>
-                        </div>
-                        {user && (
-                            <Link
-                                href="/startups/submit"
-                                className="hud-panel-sm border border-primary/50 bg-primary/10 px-5 py-2.5 text-xs font-mono font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
-                            >
-                                Propose your startup
-                            </Link>
-                        )}
-                    </div>
-                </div>
-
-                {loading && (
-                    <div className="flex flex-col items-center justify-center py-20 gap-4">
-                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                        <span className="text-xs font-mono text-primary tracking-widest uppercase animate-pulse">Loading Startups...</span>
-                    </div>
-                )}
-
-                {error && (
-                    <div className="text-center py-12 hud-panel bg-destructive/5 border border-destructive/40 max-w-2xl mx-auto px-4">
-                        <p className="text-xs font-mono text-destructive">{error}</p>
-                    </div>
-                )}
-
-                {!loading && !error && startups.length === 0 && (
-                    <div className="text-center py-20 hud-panel bg-card/40 border border-border/50 max-w-2xl mx-auto scanlines">
-                        <Rocket className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4 relative z-10" />
-                        <p className="text-xs font-mono text-muted-foreground tracking-widest uppercase relative z-10">No startups found in archive.</p>
-                    </div>
-                )}
-
-                {!loading && !error && startups.length > 0 && (
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {startups.map((startup, i) => (
-                            <button
-                                key={startup.id}
-                                type="button"
-                                onClick={() => setSelected(startup)}
-                                className={cn(
-                                    "group relative w-full text-left bg-card/60 border border-border/40 overflow-hidden card-hover transition-all hover:border-primary/50 hover:bg-card/90 scanlines cursor-pointer",
-                                    i % 2 === 0 ? "hud-panel" : "hud-panel-alt"
-                                )}
-                            >
-                                <div className="absolute top-0 right-0 w-0 h-0 border-t-[20px] border-t-primary/20 border-l-[20px] border-l-transparent group-hover:border-t-primary/50 transition-colors z-20 pointer-events-none" />
-                                <div className="relative z-10 flex gap-4 border-b border-border/40 bg-gradient-to-br from-primary/[0.08] to-transparent p-4 sm:p-5">
-                                    <div
-                                        className={cn(
-                                            "relative shrink-0 overflow-hidden rounded-sm border border-border/50 bg-background/70 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]",
-                                            "flex h-[4.5rem] w-[4.5rem] items-center justify-center sm:h-[5rem] sm:w-[5rem]"
-                                        )}
-                                    >
-                                        <StartupGalleryImage
-                                            src={startup.logoUrl}
-                                            className="h-full w-full object-contain p-2 transition-transform group-hover:scale-[1.03]"
-                                            fallbackClassName="h-full w-full"
-                                            iconClassName="h-8 w-8 sm:h-9 sm:w-9"
-                                        />
-                                    </div>
-                                    <div className="min-w-0 flex-1 pt-0.5">
-                                        <p className="text-[10px] font-mono uppercase tracking-widest text-primary/80 line-clamp-2 sm:line-clamp-1">
-                                            {startup.businessCategory}
-                                        </p>
-                                        <h3 className="font-bold text-base sm:text-lg group-hover:text-primary transition-colors tracking-tight uppercase line-clamp-2 leading-snug">
-                                            {startup.name}
-                                        </h3>
-                                        <p className="mt-1 text-xs font-mono text-muted-foreground">Founded {startup.foundedYear}</p>
-                                    </div>
-                                </div>
-                                <div className="flex flex-col min-h-[160px] flex-1 p-5 pt-4 relative z-10">
-                                    <p className="text-xs text-muted-foreground font-mono mb-4 line-clamp-3 flex-grow">{startup.companyOverview}</p>
-                                    <div className="mt-auto space-y-3 border-t border-border/40 pt-3">
-                                        {(startup.submitterName || startup.submitterGraduationYear) && (
-                                            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-primary/80">
-                                                {startup.submitterPhotoURL && (
-                                                    <StartupGalleryImage
-                                                        src={startup.submitterPhotoURL}
-                                                        className="h-7 w-7 border border-primary/30 object-cover"
-                                                        fallbackClassName="h-7 w-7 border border-primary/30"
-                                                        iconClassName="h-3.5 w-3.5"
-                                                    />
-                                                )}
-                                                <span>
-                                                    {startup.submitterName}
-                                                    {startup.submitterGraduationYear ? ` · ’${startup.submitterGraduationYear.slice(-2)}` : ""}
-                                                </span>
-                                            </div>
-                                        )}
-                                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-primary/70 group-hover:text-primary">
-                                            Open details →
-                                        </span>
-                                    </div>
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                )}
+                    <p className="text-xs font-semibold text-[#0A111F] leading-snug">{biz.name}</p>
+                  </div>
+                </FadeIn>
+              ))}
             </div>
-
-            {selected && (
-                <StartupDetailModal
-                    startup={selected}
-                    onClose={closeModal}
-                    canManage={canManageStartup(selected)}
-                    onDeleted={() => setSelected(null)}
-                />
-            )}
-        </div>
-    );
+          </div>
+        </section>
+      </main>
+      <EtowerFooter />
+    </div>
+  );
 }

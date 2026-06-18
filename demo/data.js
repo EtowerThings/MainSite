@@ -1,0 +1,122 @@
+/** Dummy data for CODE OS static demo */
+window.CODE_DEMO = {
+  fiscal: { term: "spring", year: 2026, label: "S26" },
+  user: {
+    member: { name: "Jordan Kim", email: "jkim@babson.edu", role: "Member", clearance: "MEMBER", year: "2027", skills: ["React", "Python", "Figma"], bio: "CS + entrepreneurship. Building at CODE.", linkedin: "linkedin.com/in/jordankim" },
+    admin: { name: "Alex Rivera", email: "arivera@babson.edu", role: "President", clearance: "HIGH COMMAND", year: "2026", skills: ["Leadership", "TypeScript", "Strategy"], bio: "President · S26 fiscal lead.", linkedin: "linkedin.com/in/alexrivera" },
+  },
+  stats: { members: 150, startups: 40, projects: 12, resources: 28, activeProjects: 5, pendingApps: 3 },
+  clientProject: {
+    name: "Weather Dashboard",
+    status: "In Progress",
+    lastUpdate: "March 2, 2026",
+    description: "Real-time weather dashboard with interactive maps and forecasts for Seven Hills Foundation.",
+    milestones: [
+      { name: "Project Setup", status: "complete" },
+      { name: "UI Design", status: "complete" },
+      { name: "API Integration", status: "in_progress" },
+      { name: "Testing & QA", status: "pending" },
+      { name: "Deployment", status: "pending" },
+    ],
+  },
+  projectDetail: {
+    id: "nexus",
+    name: "Nexus Analytics",
+    status: "active",
+    desc: "Self-serve analytics for student founders tracking cohort retention and revenue.",
+    members: ["Alex Rivera", "Jordan Kim", "Sam Chen", "Morgan Lee"],
+    milestones: [
+      { name: "Discovery", done: true },
+      { name: "MVP build", done: true },
+      { name: "Client demo", done: false },
+      { name: "Production deploy", done: false },
+    ],
+  },
+  skillsMap: [
+    { skill: "React", count: 24, people: ["Jordan Kim", "Sam Chen", "Chris Park"] },
+    { skill: "Python", count: 18, people: ["Jordan Kim", "Riley Adams"] },
+    { skill: "TypeScript", count: 15, people: ["Alex Rivera", "Sam Chen"] },
+    { skill: "Figma", count: 12, people: ["Jordan Kim", "Morgan Lee"] },
+  ],
+  birthdays: [
+    { name: "Sam Chen", date: "Mar 14" },
+    { name: "Taylor Brooks", date: "Mar 22" },
+    { name: "Jordan Kim", date: "Apr 3" },
+  ],
+  projects: [
+    { id: "nexus", name: "Nexus Analytics", status: "active", desc: "Self-serve analytics for student founders.", members: 4, cover: null },
+    { id: "blank", name: "Blank Center Portal", status: "complete", desc: "Client intake and milestone tracker for Blank Center.", members: 6, cover: null },
+    { id: "codeos", name: "CODE OS", status: "active", desc: "Club management platform — this product.", members: 8, cover: null },
+  ],
+  resources: [
+    { id: "r1", title: "React Patterns Guide", tier: "official", author: "CODE Tech", tags: ["react", "frontend"] },
+    { id: "r2", title: "Pitch Deck Template", tier: "community", author: "VP Marketing", tags: ["pitch", "design"] },
+    { id: "r3", title: "Firebase Setup Checklist", tier: "official", author: "CODE Tech", tags: ["firebase", "backend"] },
+  ],
+  events: [
+    { id: "e1", title: "General Meeting", date: "Mar 12, 2026", time: "6:00 PM", loc: "Reynolds 241", rsvp: 42 },
+    { id: "e2", title: "Technical Workshop: Next.js", date: "Mar 19, 2026", time: "5:30 PM", loc: "Luigi's", rsvp: 28 },
+    { id: "e3", title: "Hack Night", date: "Mar 26, 2026", time: "7:00 PM", loc: "Weiss Lab", rsvp: 35 },
+  ],
+  feed: [
+    { type: "milestone", text: "Nexus Analytics — client demo scheduled Friday", time: "2h ago" },
+    { type: "resource", text: "React Patterns Guide submitted for approval", time: "5h ago" },
+    { type: "startup", text: "CampusPay startup proposal awaiting review", time: "1d ago" },
+    { type: "broadcast", text: "Spring GM · Thu 6pm Reynolds", time: "2d ago" },
+  ],
+  members: [
+    { name: "Alex Rivera", role: "President", year: "2026", residency: "Resident", status: "approved" },
+    { name: "Jordan Kim", role: "Member", year: "2027", residency: "Resident", status: "approved" },
+    { name: "Sam Chen", role: "VP Events", year: "2026", residency: "Resident", status: "approved" },
+    { name: "Morgan Lee", role: "Member", year: "2028", residency: "Associate", status: "pending" },
+    { name: "Taylor Brooks", role: "Alumni", year: "2023", residency: "Alumni", status: "approved" },
+  ],
+  alumni: [
+    { name: "Taylor Brooks", skill: "Product Strategy", year: "2023", mentor: true },
+    { name: "Chris Park", skill: "Full-stack", year: "2022", mentor: true },
+    { name: "Riley Adams", skill: "Growth Marketing", year: "2024", mentor: false },
+  ],
+  faqs: [
+    { q: "How do I join CODE?", a: "Apply during open recruitment or attend a general meeting. You'll get dashboard access after e-board approval." },
+    { q: "What is housing points?", a: "Points track event attendance and leadership roles for resident member housing eligibility." },
+    { q: "How do I propose a startup?", a: "Sign in and use Propose your startup. E-board reviews before public gallery listing." },
+    { q: "Who can access Admin Tools?", a: "Core admins, functional VPs, and recruitment/outreach leads — clearance varies by module." },
+  ],
+  startups: [
+    { id: "1", name: "Nexus Analytics", cat: "B2B SaaS", year: "2023", overview: "Analytics for student founders.", story: "Built during a CODE consulting sprint with the Blank Center.", founder: "Alex Chen · '24" },
+    { id: "2", name: "GreenRoute", cat: "Climate", year: "2022", overview: "Delivery fleet route optimization.", story: "Started as a FME project; won Babson BETA.", founder: "Jordan Lee · '23" },
+    { id: "3", name: "CampusPay", cat: "FinTech", year: "2024", overview: "Club dues and peer payments.", story: "Piloted with three Babson clubs in S25.", founder: "Sam Rivera · '25" },
+    { id: "4", name: "StudyStack", cat: "EdTech", year: "2021", overview: "AI flashcards for case prep.", story: "Bootstrapped after CODE technical workshops. 10k+ MAU.", founder: "Morgan Kim · '22" },
+  ],
+  hallOfFame: [
+    { name: "Blank Center Portal", year: "2025", demo: "#", tag: "Client project" },
+    { name: "CODE OS", year: "2026", demo: "dashboard.html", tag: "Internal" },
+    { name: "Olin × CODE Speaker Series", year: "2024", demo: "#", tag: "Events" },
+  ],
+  eboardTasks: [
+    { title: "Finalize S26 budget", assignee: "VP Finance", status: "in-progress", due: "Mar 15" },
+    { title: "Review startup proposals", assignee: "President", status: "open", due: "Mar 10" },
+    { title: "GM slide deck", assignee: "VP Marketing", status: "done", due: "Mar 8" },
+  ],
+  eboardEvents: [
+    { title: "E-board sync", date: "Mar 9", type: "meeting" },
+    { title: "Budget deadline", date: "Mar 15", type: "deadline" },
+    { title: "Recruitment opens", date: "Mar 20", type: "milestone" },
+  ],
+  housing: [
+    { name: "Jordan Kim", attendance: 12, host: 2, leadership: 0, total: 14 },
+    { name: "Alex Rivera", attendance: 10, host: 1, leadership: 3, total: 14 },
+    { name: "Sam Chen", attendance: 8, host: 3, leadership: 2, total: 13 },
+  ],
+  admin: {
+    announcements: [{ title: "Spring GM Thursday", body: "Reynolds 241 · 6pm · business casual", date: "Mar 5" }],
+    budgets: [{ title: "Spring Social", fiscal: "S26", total: 2400, attendees: 60 }, { title: "Hack Night snacks", fiscal: "S26", total: 350, attendees: 35 }],
+    actionItems: [{ title: "Submit S26 budget", assignee: "VP Finance", due: "Mar 15", status: "open" }, { title: "GM slide deck", assignee: "VP Marketing", due: "Mar 10", status: "done" }],
+    applications: [{ name: "Morgan Lee", year: "2028", date: "Mar 4" }, { name: "Casey Wu", year: "2029", date: "Mar 6" }],
+    inquiries: [{ q: "Sponsorship for hackathon?", from: "Public", status: "pending" }, { q: "Speaker for React workshop?", from: "Olin", status: "replied" }],
+    pitches: [{ name: "Mobile app for dining", by: "Jordan Kim", status: "pending" }],
+    pendingResources: [{ title: "GraphQL cheatsheet", by: "Sam Chen" }, { title: "Docker quickstart", by: "Alex Rivera" }],
+    pendingStartups: [{ name: "CampusPay", by: "Sam Rivera", status: "pending" }],
+    attendance: [{ event: "General Meeting", date: "Feb 27", present: 38, total: 42 }],
+  },
+};

@@ -201,7 +201,7 @@ export default function ProfilePage() {
                         </span>
                         <span className="text-[10px] items-center gap-1.5 font-mono font-bold px-3 py-1 border hud-panel-sm bg-primary border-primary text-primary-foreground uppercase tracking-widest shadow-[0_0_10px_rgba(203,247,2,0.3)]">
                             <Shield className="w-3 h-3 inline mr-1" />
-                            {getRoleLabel(profile?.role ?? "member")}
+                            {getRoleLabel(profile?.role ?? "member", profile?.role)}
                         </span>
                         <span className="text-[10px] font-mono font-bold px-3 py-1 border hud-panel-sm border-border/60 text-muted-foreground uppercase tracking-widest">
                             {getResidencyLabel(profile?.residency ?? "resident")}

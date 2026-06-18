@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Tools — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="admin" data-layout="app" data-admin-only="true">
+  <div class="grid-bg"></div>
+  <div id="access-denied" class="access-denied hud" hidden>
+    <p class="badge-pill" style="border-color:#f66;color:#f66;">403 Forbidden</p>
+    <h2>Access Denied</h2>
+    <p class="text-muted">Admin tools require <strong>Admin view</strong>. Use the toggle in the demo banner above.</p>
+    <a href="dashboard.html" class="btn" style="margin-top:16px;">← Dashboard</a>
+  </div>
+  <main class="dash-main" id="page-content">
+    <header class="page-head">
+      <p class="badge-pill">Command center</p>
+      <h1>Admin tools</h1>
+      <p>Signed in as <span data-demo-user-name></span> · <span data-demo-clearance></span></p>
+    </header>
+    <div id="admin-root">
+      <div id="admin-gallery">
+        <p class="text-muted" style="margin-bottom:8px;">Select a module</p>
+        <div class="admin-gallery" id="admin-tiles"></div>
+      </div>
+      <div id="admin-tab-bar" class="admin-tab-bar" hidden>
+        <button type="button" class="admin-tab" id="admin-all-tools">← All tools</button>
+        <button type="button" class="admin-tab" data-admin-tab="announcements">Broadcasts</button>
+        <button type="button" class="admin-tab" data-admin-tab="budgets">Budgets</button>
+        <button type="button" class="admin-tab" data-admin-tab="clubFiscal">Club fiscal</button>
+        <button type="button" class="admin-tab" data-admin-tab="actionItems">Deadlines</button>
+        <button type="button" class="admin-tab" data-admin-tab="startups">Startups</button>
+        <button type="button" class="admin-tab" data-admin-tab="applications">Applications</button>
+        <button type="button" class="admin-tab" data-admin-tab="inquiries">Communications</button>
+        <button type="button" class="admin-tab" data-admin-tab="pitches">Proposals</button>
+        <button type="button" class="admin-tab" data-admin-tab="resources">Data logs</button>
+        <button type="button" class="admin-tab" data-admin-tab="profiles">Roster</button>
+        <button type="button" class="admin-tab" data-admin-tab="housingPoints">Housing pts</button>
+        <button type="button" class="admin-tab" data-admin-tab="birthdays">Birthdays</button>
+        <button type="button" class="admin-tab" data-admin-tab="eventAttendance">Attendance</button>
+        <button type="button" class="admin-tab" data-admin-tab="skillsExport">Skills export</button>
+      </div>
+
+      <section class="admin-panel hud" data-admin-panel="announcements" hidden>
+        <h3>Broadcasts</h3>
+        <div id="panel-announcements"></div>
+        <button type="button" class="btn" style="margin-top:16px;" onclick="alert('Demo: broadcast sent')">+ New broadcast</button>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="budgets" hidden>
+        <h3>Budgets · <span id="budget-fiscal"></span></h3>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Event</th><th>Fiscal</th><th>Total</th><th>Attendees</th></tr></thead><tbody id="panel-budgets"></tbody></table></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="clubFiscal" hidden>
+        <h3>Club fiscal term</h3>
+        <form style="max-width:24rem;" onsubmit="event.preventDefault();alert('Demo: fiscal term saved')">
+          <div class="form-group"><label>Term</label><select class="form-select" id="fiscal-term"><option value="spring">Spring</option><option value="fall">Fall</option></select></div>
+          <div class="form-group"><label>Year</label><input class="form-input" id="fiscal-year" /></div>
+          <button type="submit" class="btn btn--solid">Save fiscal term</button>
+        </form>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="actionItems" hidden>
+        <h3>Deadlines</h3>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Task</th><th>Assignee</th><th>Due</th><th>Status</th></tr></thead><tbody id="panel-actionItems"></tbody></table></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="startups" hidden>
+        <h3>Startup proposals</h3>
+        <div id="panel-startups"></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="applications" hidden>
+        <h3>Member applications</h3>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Year</th><th>Applied</th><th></th></tr></thead><tbody id="panel-applications"></tbody></table></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="inquiries" hidden>
+        <h3>Communications</h3>
+        <div id="panel-inquiries"></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="pitches" hidden>
+        <h3>Project proposals</h3>
+        <div id="panel-pitches"></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="resources" hidden>
+        <h3>Data logs · pending resources</h3>
+        <div id="panel-resources"></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="profiles" hidden>
+        <h3>Roster</h3>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Role</th><th>Year</th><th>Residency</th></tr></thead><tbody id="panel-profiles"></tbody></table></div>
+        <button type="button" class="btn" style="margin-top:16px;" onclick="alert('Demo: CSV exported')">Export CSV</button>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="housingPoints" hidden>
+        <h3>Housing points</h3>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Member</th><th>Attendance</th><th>Host</th><th>Leadership</th><th>Total</th></tr></thead><tbody id="panel-housing"></tbody></table></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="birthdays" hidden>
+        <h3>Upcoming birthdays</h3>
+        <div id="panel-birthdays"></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="eventAttendance" hidden>
+        <h3>Event attendance</h3>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Event</th><th>Date</th><th>Present</th><th>Total</th></tr></thead><tbody id="panel-attendance"></tbody></table></div>
+      </section>
+      <section class="admin-panel hud" data-admin-panel="skillsExport" hidden>
+        <h3>Skills export</h3>
+        <div id="panel-skills"></div>
+        <button type="button" class="btn" style="margin-top:16px;" onclick="alert('Demo: skills CSV downloaded')">Download CSV</button>
+      </section>
+    </div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const a = CODE_DEMO.admin;
+    const tiles = [
+      { key: "announcements", label: "Broadcasts", count: a.announcements.length },
+      { key: "budgets", label: "Budgets", count: a.budgets.length },
+      { key: "clubFiscal", label: "Club fiscal" },
+      { key: "actionItems", label: "Deadlines", count: a.actionItems.length },
+      { key: "startups", label: "Startups", count: a.pendingStartups.length },
+      { key: "applications", label: "Applications", count: a.applications.length },
+      { key: "inquiries", label: "Communications", count: a.inquiries.filter((i) => i.status === "pending").length },
+      { key: "pitches", label: "Proposals", count: a.pitches.length },
+      { key: "resources", label: "Data logs", count: a.pendingResources.length },
+      { key: "profiles", label: "Roster", count: CODE_DEMO.members.length },
+      { key: "housingPoints", label: "Housing pts" },
+      { key: "birthdays", label: "Birthdays", count: CODE_DEMO.birthdays.length },
+      { key: "eventAttendance", label: "Attendance" },
+      { key: "skillsExport", label: "Skills export", count: CODE_DEMO.skillsMap.length },
+    ];
+    document.getElementById("admin-tiles").innerHTML = tiles.map((t) => `
+      <button type="button" class="admin-tile hud" data-open-tab="${t.key}">
+        ${t.count != null ? `<span class="admin-tile__count">${t.count}</span>` : ""}
+        <div style="font-size:1.5rem;">⬡</div>
+        <div class="admin-tile__label">${t.label}</div>
+      </button>`).join("");
+    document.getElementById("panel-announcements").innerHTML = a.announcements.map((x) => `
+      <div class="feed-item"><strong>${x.title}</strong> — ${x.body}<time>${x.date}</time></div>`).join("");
+    document.getElementById("budget-fiscal").textContent = CODE_DEMO.fiscal.label;
+    document.getElementById("panel-budgets").innerHTML = a.budgets.map((b) => `
+      <tr><td>${b.title}</td><td>${b.fiscal}</td><td>$${b.total}</td><td>${b.attendees}</td></tr>`).join("");
+    document.getElementById("fiscal-term").value = CODE_DEMO.fiscal.term;
+    document.getElementById("fiscal-year").value = CODE_DEMO.fiscal.year;
+    document.getElementById("panel-actionItems").innerHTML = a.actionItems.map((x) => `
+      <tr><td>${x.title}</td><td>${x.assignee}</td><td>${x.due}</td><td>${x.status}</td></tr>`).join("");
+    document.getElementById("panel-startups").innerHTML = a.pendingStartups.map((s) => `
+      <div class="feed-item">${s.name} by ${s.by} <button class="btn" style="float:right;" onclick="alert('Demo: approved')">Approve</button></div>`).join("");
+    document.getElementById("panel-applications").innerHTML = a.applications.map((x) => `
+      <tr><td>${x.name}</td><td>${x.year}</td><td>${x.date}</td><td><button class="btn" onclick="alert('Demo: approved')">Approve</button></td></tr>`).join("");
+    document.getElementById("panel-inquiries").innerHTML = a.inquiries.map((x) => `
+      <div class="feed-item">${x.q} <span class="badge-pill">${x.from}</span> <span class="text-muted">${x.status}</span></div>`).join("");
+    document.getElementById("panel-pitches").innerHTML = a.pitches.map((x) => `
+      <div class="feed-item">${x.name} by ${x.by} <button class="btn" onclick="alert('Demo: reviewed')">Review</button></div>`).join("");
+    document.getElementById("panel-resources").innerHTML = a.pendingResources.map((x) => `
+      <div class="feed-item">${x.title} by ${x.by} <button class="btn" onclick="alert('Demo: approved')">Approve</button></div>`).join("");
+    document.getElementById("panel-profiles").innerHTML = CODE_DEMO.members.map((m) => `
+      <tr><td>${m.name}</td><td>${m.role}</td><td>${m.year}</td><td>${m.residency}</td></tr>`).join("");
+    document.getElementById("panel-housing").innerHTML = CODE_DEMO.housing.map((h) => `
+      <tr><td>${h.name}</td><td>${h.attendance}</td><td>${h.host}</td><td>${h.leadership}</td><td>${h.total}</td></tr>`).join("");
+    document.getElementById("panel-birthdays").innerHTML = CODE_DEMO.birthdays.map((b) => `
+      <div class="feed-item"><strong>${b.name}</strong> — ${b.date}</div>`).join("");
+    document.getElementById("panel-attendance").innerHTML = a.attendance.map((x) => `
+      <tr><td>${x.event}</td><td>${x.date}</td><td>${x.present}</td><td>${x.total}</td></tr>`).join("");
+    document.getElementById("panel-skills").innerHTML = CODE_DEMO.skillsMap.map((s) => `
+      <div class="feed-item"><strong>${s.skill}</strong> (${s.count}) — ${s.people.join(", ")}</div>`).join("");
+  </script>
+</body>
+</html>

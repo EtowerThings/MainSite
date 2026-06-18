@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alumni Network — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="network" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <header class="page-head">
+      <p class="badge-pill">Alumni mentors</p>
+      <h1>Network</h1>
+      <p>Connect with CODE alumni for advice and referrals.</p>
+    </header>
+    <div class="card-grid" id="network-grid"></div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("network-grid").innerHTML = CODE_DEMO.alumni.map((a) => `
+      <article class="card hud">
+        <h3>${a.name}</h3>
+        <p>${a.skill} · Class of ${a.year}</p>
+        ${a.mentor ? '<span class="badge-pill" style="margin-top:12px;">Mentor available</span>' : ""}
+        <button type="button" class="btn" style="margin-top:16px;" onclick="alert('Demo: connection request sent')">Connect</button>
+      </article>`).join("");
+  </script>
+</body>
+</html>

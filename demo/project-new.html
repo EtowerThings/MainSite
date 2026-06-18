@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Project — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="project-new" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content" style="max-width:40rem;">
+    <header class="page-head">
+      <p class="badge-pill">Create</p>
+      <h1>New project</h1>
+      <p>Spin up an internal or client-facing project workspace.</p>
+    </header>
+    <form class="hud" style="padding:24px;" onsubmit="event.preventDefault();alert('Demo: project created');location.href='project-detail.html'">
+      <div class="form-group"><label>Project name</label><input class="form-input" value="Campus Events API" /></div>
+      <div class="form-group"><label>Description</label><textarea class="form-textarea">Unified events API for Babson clubs.</textarea></div>
+      <div class="form-group"><label>Type</label><select class="form-select"><option>Internal</option><option>Client</option><option>Hackathon</option></select></div>
+      <div class="form-group"><label>Lead</label><input class="form-input" value="Jordan Kim" /></div>
+      <button type="submit" class="btn btn--solid">Create project</button>
+      <a href="projects.html" class="btn" style="margin-left:8px;">Cancel</a>
+    </form>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

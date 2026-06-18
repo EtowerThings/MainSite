@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hall of Fame — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="hall-of-fame" data-layout="public">
+  <div class="grid-bg"></div>
+  <main class="page container" id="page-content" style="padding-bottom:80px;">
+    <header class="gallery-header">
+      <p class="section__label">Shipped work</p>
+      <h1>Hall of <span class="gradient-text">Fame</span></h1>
+    </header>
+    <div class="card-grid" id="hof-grid"></div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("hof-grid").innerHTML = CODE_DEMO.hallOfFame.map((p) => `
+      <article class="card hud">
+        <span class="badge-pill">${p.tag}</span>
+        <h3>${p.name}</h3>
+        <p class="text-muted">${p.year}</p>
+        <a href="${p.demo}" class="btn" style="margin-top:16px;">View project →</a>
+      </article>`).join("");
+  </script>
+</body>
+</html>
