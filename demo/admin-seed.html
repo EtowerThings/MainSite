@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Seed — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="admin-seed" data-layout="app" data-admin-only="true">
+  <div class="grid-bg"></div>
+  <div id="access-denied" class="access-denied hud" hidden>
+    <p class="badge-pill" style="border-color:#f66;color:#f66;">403 Forbidden</p>
+    <h2>Access Denied</h2>
+    <p class="text-muted">Switch to <strong>Admin view</strong> in the demo banner to preview database seeding.</p>
+    <a href="admin.html" class="btn" style="margin-top:16px;">← Admin tools</a>
+  </div>
+  <main class="dash-main" id="page-content" style="max-width:40rem;">
+    <a href="admin.html" class="text-muted" style="display:inline-block;margin-bottom:16px;">← Admin tools</a>
+    <header class="page-head">
+      <p class="badge-pill">Database seed</p>
+      <h1>Seed demo data</h1>
+      <p>Populate Firestore with sample events, resources, and members (live app only).</p>
+    </header>
+    <section class="hud" style="padding:24px;">
+      <p class="text-muted" style="margin-bottom:16px;">This static demo cannot write to Firebase. In production, admins use this page to bootstrap collections.</p>
+      <ul style="list-style:none;font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:24px;">
+        <li style="padding:8px 0;border-bottom:1px solid var(--border);">✓ 3 sample events</li>
+        <li style="padding:8px 0;border-bottom:1px solid var(--border);">✓ 4 sample resources</li>
+        <li style="padding:8px 0;border-bottom:1px solid var(--border);">✓ Platform stats document</li>
+        <li style="padding:8px 0;">✓ FAQ entries</li>
+      </ul>
+      <button type="button" class="btn btn--solid" onclick="alert('Demo: seed would run against Firestore in the live app')">Run seed (demo)</button>
+    </section>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

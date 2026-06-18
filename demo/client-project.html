@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Client Portal — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="client-project" data-layout="public">
+  <div class="grid-bg"></div>
+  <main class="client-view" id="page-content">
+    <a href="index.html" class="text-muted" style="display:inline-block;margin-bottom:16px;">← Public home</a>
+    <p class="badge-pill" style="margin-bottom:12px;">Client portal</p>
+    <div class="page-head">
+      <span class="badge-pill" id="client-status"></span>
+      <h1 id="client-name"></h1>
+      <p id="client-desc"></p>
+      <p class="text-muted" style="margin-top:8px;">Last update: <span id="client-update"></span></p>
+    </div>
+    <section class="hud" style="padding:24px;margin-bottom:24px;">
+      <h3 style="font-family:var(--mono);font-size:10px;color:var(--primary);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:16px;">Milestones</h3>
+      <div id="client-milestones"></div>
+    </section>
+    <section class="hud" style="padding:24px;">
+      <h3 style="font-family:var(--mono);font-size:10px;color:var(--primary);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:16px;">Client feedback</h3>
+      <form onsubmit="event.preventDefault();alert('Demo: feedback submitted');">
+        <div class="form-group"><textarea class="form-textarea" placeholder="Share feedback on progress…">Love the UI direction — excited for API integration.</textarea></div>
+        <button type="submit" class="btn btn--solid">Submit feedback</button>
+      </form>
+    </section>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const p = CODE_DEMO.clientProject;
+    document.getElementById("client-name").textContent = p.name;
+    document.getElementById("client-status").textContent = p.status;
+    document.getElementById("client-desc").textContent = p.description;
+    document.getElementById("client-update").textContent = p.lastUpdate;
+    document.getElementById("client-milestones").innerHTML = p.milestones.map((m) => `
+      <div class="client-milestone ${m.status === "complete" ? "done" : ""}">
+        <span>${m.status === "complete" ? "✓" : m.status === "in_progress" ? "◐" : "○"} ${m.name}</span>
+        <span class="text-muted">${m.status.replace("_", " ")}</span>
+      </div>`).join("");
+  </script>
+</body>
+</html>

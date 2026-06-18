@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Activity Feed — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="feed" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <header class="page-head">
+      <p class="badge-pill">Live stream</p>
+      <h1>Activity feed</h1>
+      <p>Club-wide updates, milestones, and submissions.</p>
+    </header>
+    <section class="panel hud" id="feed-list"></section>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("feed-list").innerHTML = CODE_DEMO.feed.map((f) => `
+      <div class="feed-item">
+        <span class="badge-pill" style="margin-right:8px;">${f.type}</span>
+        ${f.text}
+        <time>${f.time}</time>
+      </div>`).join("");
+  </script>
+</body>
+</html>

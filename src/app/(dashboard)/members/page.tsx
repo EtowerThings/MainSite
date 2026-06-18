@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { isAdmin, isPresident } from "@/lib/roles";
-import { getRoleLabel, ALL_ROLES, ADMIN_ROLES, LEADERSHIP_ROLES } from "@/lib/roles";
+import { getRoleLabel, ALL_ROLES, ADMIN_ROLES, LEADERSHIP_ROLES, isRoot } from "@/lib/roles";
 import { ALL_RESIDENCY_OPTIONS, getResidencyLabel } from "@/lib/member-residency";
 import type { ResidencyType } from "@/lib/member-residency";
 import type { UserRole } from "@/contexts/auth-context";
@@ -85,7 +85,7 @@ export default function MembersPage() {
 
     const isAlumniMember = (m: MemberItem) => m.role === "alumni" || m.residency === "alumni";
     const isResidentsGroup = (m: MemberItem) =>
-        m.residency === "resident" || ADMIN_ROLES.includes(m.role as UserRole);
+        m.residency === "resident" || isAdmin(m.role);
 
     const filtered = members
         .filter((m) => {
@@ -359,7 +359,8 @@ export default function MembersPage() {
                                         ) : (
                                             <div className="flex flex-wrap gap-2">
                                                 <span className={cn("inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm", roleConfig[selectedMember.role]?.color || roleConfig.member.color)}>
-                                                    {roleConfig[selectedMember.role]?.icon || roleConfig.member.icon} {roleConfig[selectedMember.role]?.label || roleConfig.member.label}
+                                                    {roleConfig[selectedMember.role]?.icon || roleConfig.member.icon}{" "}
+                                                    {getRoleLabel(selectedMember.role, profile?.role)}
                                                 </span>
                                                 <span className={cn("inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border hud-panel-sm", residencyBadgeClass[selectedMember.residency])}>
                                                     {getResidencyLabel(selectedMember.residency).toUpperCase()}
@@ -440,7 +441,10 @@ export default function MembersPage() {
                                         </a>
                                     )}
 
-                                    {userIsPresident && selectedMember.id !== profile?.uid && selectedMember.role !== "president" && (
+                                    {userIsPresident &&
+                                        selectedMember.id !== profile?.uid &&
+                                        (isRoot(profile?.role) || selectedMember.role !== "president") &&
+                                        (isRoot(profile?.role) || selectedMember.role !== "root") && (
                                         <div className="mt-6 pt-4 border-t border-border/40">
                                             {removeConfirm !== selectedMember.id ? (
                                                 <button

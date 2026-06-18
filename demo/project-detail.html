@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Detail — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="project-detail" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <a href="projects.html" class="text-muted" style="display:inline-block;margin-bottom:16px;">← All projects</a>
+    <header class="page-head">
+      <span class="badge-pill" id="proj-status"></span>
+      <h1 id="proj-name"></h1>
+      <p id="proj-desc"></p>
+    </header>
+    <div class="dash-panels">
+      <section class="panel hud">
+        <h3>Milestones</h3>
+        <div id="proj-milestones"></div>
+      </section>
+      <section class="panel hud">
+        <h3>Team</h3>
+        <ul id="proj-team" style="list-style:none;font-family:var(--mono);font-size:12px;"></ul>
+        <a href="client-project.html" class="btn" style="margin-top:16px;" data-admin-only-block hidden>Client portal view →</a>
+      </section>
+    </div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const p = CODE_DEMO.projectDetail;
+    document.getElementById("proj-name").textContent = p.name;
+    document.getElementById("proj-status").textContent = p.status;
+    document.getElementById("proj-desc").textContent = p.desc;
+    document.getElementById("proj-milestones").innerHTML = p.milestones.map((m) => `
+      <div class="feed-item">${m.done ? "✓" : "○"} ${m.name}</div>`).join("");
+    document.getElementById("proj-team").innerHTML = p.members.map((m) => `<li style="padding:8px 0;border-bottom:1px solid var(--border);">${m}</li>`).join("");
+  </script>
+</body>
+</html>

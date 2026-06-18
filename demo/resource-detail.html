@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resource — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="resource-detail" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content" style="max-width:48rem;">
+    <a href="resources.html" class="text-muted" style="display:inline-block;margin-bottom:16px;">← Resources</a>
+    <article class="hud" style="padding:32px;" id="resource-body"></article>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const r = CODE_DEMO.resources[0];
+    document.getElementById("resource-body").innerHTML = `
+      <span class="badge-pill">${r.tier}</span>
+      <h1 style="font-size:1.75rem;font-weight:900;margin:12px 0;">${r.title}</h1>
+      <p class="text-muted">Author: ${r.author} · Tags: ${r.tags.join(", ")}</p>
+      <div style="margin-top:24px;font-family:var(--mono);font-size:13px;color:var(--muted);line-height:1.7;">
+        <p>// Demo content</p>
+        <p style="margin-top:12px;">This guide covers component patterns, hooks, and state management conventions used across CODE projects.</p>
+        <pre style="margin-top:16px;padding:16px;background:var(--bg);border:1px solid var(--border);overflow:auto;">export function useMemberData() {
+  // fetch approved members
+  return { data, loading };
+}</pre>
+      </div>`;
+  </script>
+</body>
+</html>

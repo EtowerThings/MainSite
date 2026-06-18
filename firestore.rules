@@ -14,10 +14,23 @@
       function userRole() {
         return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
       }
+
+      function isRoot() {
+        return isSignedIn() && userExists() && userRole() == 'root';
+      }
       
       function isAdmin() {
-        return isSignedIn() && userExists() &&
-          userRole() in ['president', 'vice-president', 'community-manager'];
+        return isRoot() || (
+          isSignedIn() && userExists() &&
+          userRole() in ['president', 'vice-president', 'community-manager']
+        );
+      }
+
+      /** Only root may grant or revoke the root role. */
+      function changesRoleToOrFromRoot() {
+        return 'role' in request.resource.data &&
+          request.resource.data.role != resource.data.role &&
+          (request.resource.data.role == 'root' || resource.data.role == 'root');
       }
 
       function isVpRole() {
@@ -58,7 +71,11 @@
       match /users/{userId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.auth.uid == userId;
-        allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow update: if isSignedIn() && (
+          isRoot() ||
+          (request.auth.uid == userId && !changesRoleToOrFromRoot()) ||
+          (isAdmin() && !changesRoleToOrFromRoot())
+        );
         allow delete: if isAdmin();
       }
 

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Board Workspace — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="eboard" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <header class="page-head">
+      <p class="badge-pill">Leadership workspace</p>
+      <h1>E-board</h1>
+      <p>Tasks, calendar, and startup review — signed in as <span data-demo-user-name></span>.</p>
+    </header>
+    <div class="dash-panels">
+      <section class="panel hud">
+        <h3>Action items</h3>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Task</th><th>Owner</th><th>Due</th><th>Status</th></tr></thead>
+            <tbody id="eboard-tasks"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel hud">
+        <h3>Calendar</h3>
+        <div id="eboard-events"></div>
+        <a href="admin.html#startups" class="btn" style="margin-top:16px;" data-admin-only-block hidden>Review startups →</a>
+      </section>
+    </div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("eboard-tasks").innerHTML = CODE_DEMO.eboardTasks.map((t) => `
+      <tr><td>${t.title}</td><td>${t.assignee}</td><td>${t.due}</td><td>${t.status}</td></tr>`).join("");
+    document.getElementById("eboard-events").innerHTML = CODE_DEMO.eboardEvents.map((e) => `
+      <div class="feed-item"><strong>${e.date}</strong> — ${e.title}<time>${e.type}</time></div>`).join("");
+  </script>
+</body>
+</html>

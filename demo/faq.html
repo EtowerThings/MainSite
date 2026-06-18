@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FAQ — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="faq" data-layout="public">
+  <div class="grid-bg"></div>
+  <main class="page container" id="page-content" style="max-width:40rem;padding-bottom:80px;">
+    <header class="gallery-header">
+      <p class="section__label">Knowledge base</p>
+      <h1>Community <span class="gradient-text">FAQ</span></h1>
+    </header>
+    <div id="faq-list"></div>
+    <p style="text-align:center;margin-top:32px;"><a href="index.html" class="btn">← Home</a></p>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("faq-list").innerHTML = CODE_DEMO.faqs.map((f, i) => `
+      <div class="faq-item hud">
+        <button type="button" class="faq-q" data-faq-toggle aria-expanded="false">${f.q}<span>+</span></button>
+        <div class="faq-a" hidden>${f.a}</div>
+      </div>`).join("");
+  </script>
+</body>
+</html>

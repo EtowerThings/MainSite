@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Startup Gallery — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="startups" data-layout="public">
+  <div class="grid-bg"></div>
+  <div class="glow-orb glow-orb--tl"></div>
+  <main class="page container" id="page-content">
+    <header class="gallery-header">
+      <p class="section__label">CODE Alumni Startups</p>
+      <h1>Startup <span class="gradient-text">Gallery</span></h1>
+      <p class="text-muted" style="margin-top:12px;">Click a card for full story · Sample listings for demo</p>
+    </header>
+    <div class="gallery-grid" id="gallery"></div>
+    <p style="text-align:center;padding-bottom:48px;"><a href="startups-submit.html" class="btn">Propose your startup →</a></p>
+  </main>
+  <div class="modal" id="startup-modal" role="dialog" aria-modal="true">
+    <div class="modal__box hud" id="startup-modal-body"></div>
+  </div>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("gallery").innerHTML = CODE_DEMO.startups.map((s) => `
+      <button type="button" class="startup-card hud" data-startup-id="${s.id}">
+        <div class="startup-card__head">
+          <div class="startup-card__logo">${s.name.charAt(0)}</div>
+          <div>
+            <div class="startup-card__cat">${s.cat}</div>
+            <div class="startup-card__name">${s.name}</div>
+            <div class="startup-card__cat">Founded ${s.year}</div>
+          </div>
+        </div>
+        <div class="startup-card__body">
+          <p>${s.overview}</p>
+          <p style="margin-top:12px;color:var(--primary);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">Open details →</p>
+        </div>
+      </button>`).join("");
+  </script>
+</body>
+</html>

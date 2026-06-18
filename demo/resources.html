@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resources — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="resources" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <header class="page-head">
+      <p class="badge-pill">Knowledge base</p>
+      <h1>Resources</h1>
+      <p>Official guides and community submissions.</p>
+    </header>
+    <div class="card-grid" id="resources-grid"></div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("resources-grid").innerHTML = CODE_DEMO.resources.map((r) => `
+      <article class="card hud">
+        <span class="badge-pill">${r.tier}</span>
+        <h3>${r.title}</h3>
+        <p>By ${r.author}</p>
+        <p class="text-muted" style="margin-top:8px;">${r.tags.join(" · ")}</p>
+        <a href="resource-detail.html" class="btn" style="margin-top:16px;">Open →</a>
+      </article>`).join("");
+  </script>
+</body>
+</html>

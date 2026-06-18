@@ -1,5 +1,11 @@
 import { UserRole } from "@/contexts/auth-context";
 
+/**
+ * Hidden super-admin role — assign only in Firestore (`users/{uid}.role = "root"`).
+ * Not listed in ALL_ROLES; displays as "Member" to everyone except another root user.
+ */
+export const ROOT_ROLE = "root" as const;
+
 /** President, VP (club), community manager — full admin center powers (roster, applications, etc.). */
 export const ADMIN_ROLES: UserRole[] = ["president", "vice-president", "community-manager"];
 
@@ -39,9 +45,13 @@ export const ALL_ROLES: { value: UserRole; label: string }[] = [
     { value: "alumni", label: "Alumni" },
 ];
 
-/** President, vice president, or community manager. */
+export function isRoot(role: string | undefined): boolean {
+    return role === ROOT_ROLE;
+}
+
+/** President, vice president, community manager, or root. */
 export function isAdmin(role: string | undefined): boolean {
-    return ADMIN_ROLES.includes(role as UserRole);
+    return isRoot(role) || ADMIN_ROLES.includes(role as UserRole);
 }
 
 /** Core admins, functional VPs, or recruitment/outreach team leads — Admin Tools (limited tabs) and announcements. */
@@ -69,12 +79,12 @@ export function canManageEventAttendance(role: string | undefined): boolean {
 }
 
 export function isPresident(role: string | undefined): boolean {
-    return role === "president";
+    return isRoot(role) || role === "president";
 }
 
-/** President, club VP, community manager, or functional VP — shared e-board calendar & tasks. */
+/** President, club VP, community manager, functional VP, or root — shared e-board calendar & tasks. */
 export function canAccessEboardWorkspace(role: string | undefined): boolean {
-    return LEADERSHIP_ROLES.includes(role as UserRole);
+    return isRoot(role) || LEADERSHIP_ROLES.includes(role as UserRole);
 }
 
 /** Approve or reject startup gallery proposals (core exec + functional VPs). */
@@ -82,7 +92,10 @@ export function canReviewStartupSubmissions(role: string | undefined): boolean {
     return canAccessEboardWorkspace(role);
 }
 
-export function getRoleLabel(role: string): string {
+export function getRoleLabel(role: string, viewerRole?: string): string {
+    if (role === ROOT_ROLE) {
+        return viewerRole === ROOT_ROLE ? "System Admin" : "Member";
+    }
     const found = ALL_ROLES.find((r) => r.value === role);
     return found?.label || role;
 }

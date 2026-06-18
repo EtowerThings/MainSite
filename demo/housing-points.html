@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Housing Points — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="housing-points" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <header class="page-head">
+      <p class="badge-pill">Residency tracking</p>
+      <h1>Housing points</h1>
+      <p>Attendance, hosting, and leadership credits for resident members.</p>
+    </header>
+    <div class="table-wrap hud" style="padding:16px;">
+      <table class="table">
+        <thead><tr><th>Member</th><th>Attendance</th><th>Host</th><th>Leadership</th><th>Total</th></tr></thead>
+        <tbody id="housing-table"></tbody>
+      </table>
+    </div>
+    <p class="text-muted" style="margin-top:16px;" data-admin-only-block hidden>Admin: export available in <a href="admin.html#housingPoints" style="color:var(--primary);">Admin → Housing pts</a></p>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("housing-table").innerHTML = CODE_DEMO.housing.map((h) => `
+      <tr><td>${h.name}</td><td>${h.attendance}</td><td>${h.host}</td><td>${h.leadership}</td><td style="color:var(--primary);font-weight:800;">${h.total}</td></tr>`).join("");
+  </script>
+</body>
+</html>

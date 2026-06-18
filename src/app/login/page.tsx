@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "next-themes";
@@ -10,32 +10,38 @@ import { Code2, Mail, Lock, Eye, EyeOff, ArrowLeft, Moon, Sun, Loader2, ShieldAl
 export default function LoginPage() {
     const router = useRouter();
     const { theme, setTheme } = useTheme();
-    const { signInWithGoogle, signInWithEmail } = useAuth();
+    const { signInWithGoogle, signInWithEmail, user, loading: authLoading, needsOnboarding } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
-    const handleGoogleSignIn = async () => {
-        try {
-            setLoading(true); setError("");
-            await signInWithGoogle();
-            router.push("/dashboard");
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Failed to sign in with Google");
-        } finally { setLoading(false); }
+    useEffect(() => {
+        if (authLoading || !user) return;
+        router.replace(needsOnboarding ? "/onboarding" : "/dashboard");
+    }, [authLoading, user, needsOnboarding, router]);
+
+    const handleGoogleSignIn = () => {
+        setError("");
+        setLoading(true);
+        void signInWithGoogle()
+            .catch((err: unknown) => {
+                setError(err instanceof Error ? err.message : "Failed to sign in with Google");
+                setLoading(false);
+            });
     };
 
     const handleEmailAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            setLoading(true); setError("");
+            setLoading(true);
+            setError("");
             await signInWithEmail(email, password);
-            router.push("/dashboard");
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Authentication failed");
-        } finally { setLoading(false); }
+            setLoading(false);
+        }
     };
 
     return (

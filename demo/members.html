@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Members — CODE OS Demo</title>
+  <link rel="icon" href="assets/CODELogo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="members" data-layout="app">
+  <div class="grid-bg"></div>
+  <main class="dash-main" id="page-content">
+    <header class="page-head">
+      <p class="badge-pill">Directory</p>
+      <h1>Members</h1>
+      <p>Approved roster and pending applications.</p>
+    </header>
+    <div class="table-wrap hud" style="padding:16px;">
+      <table class="table">
+        <thead><tr><th>Name</th><th>Role</th><th>Year</th><th>Residency</th><th>Status</th></tr></thead>
+        <tbody id="members-table"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("members-table").innerHTML = CODE_DEMO.members.map((m) => `
+      <tr><td>${m.name}</td><td>${m.role}</td><td>${m.year}</td><td>${m.residency}</td><td>${m.status}</td></tr>`).join("");
+  </script>
+</body>
+</html>

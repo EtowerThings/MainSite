@@ -2,7 +2,7 @@ import { getAttendanceIdsForOccurrence, type EventItem, type MemberItem } from "
 import { expandEventOccurrences, occurrenceEventLike } from "@/lib/recurring-events";
 import { eventHasOccurred } from "@/lib/event-dates";
 
-const EXECUTIVE_ROLES = new Set(["president", "vice-president", "community-manager"]);
+const EXECUTIVE_ROLES = new Set(["president", "vice-president", "community-manager", "root"]);
 const OFFICER_ROLES = new Set([
     "marketing",
     "events",
